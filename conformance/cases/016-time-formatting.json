@@ -1,0 +1,23 @@
+{
+  "name": "time-formatting",
+  "description": "shape 的 time 类型：日志转换里时间戳换格式是刚需。用 strftime 语法（%Y-%m-%d）而不是 Go 的参考时间布局，因为 SDK 面向 Python/shell 用户，strftime 是他们的母语。input 说明怎么读进来，format 说明怎么写出去。",
+  "config": {
+    "version": 1,
+    "source": "${ts} ${lv} ${msg}",
+    "mapping": {
+      "when": "ts",
+      "day": "ts",
+      "epoch": "ts",
+      "level": "upper(lv)",
+      "text": "msg"
+    },
+    "target": "${day} | ${when} | ${epoch} | ${level} | ${text}",
+    "shape": {
+      "when": { "type": "time", "format": "%H:%M:%S" },
+      "day": { "type": "time", "format": "%Y/%m/%d" },
+      "epoch": { "type": "time", "format": "unix" }
+    }
+  },
+  "input": "2026-08-12T01:02:03Z error disk full",
+  "output": "2026/08/12 | 01:02:03 | 1786496523 | ERROR | disk full\n"
+}

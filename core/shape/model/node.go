@@ -19,8 +19,10 @@ type Node interface {
 // format 必须靠 Meta 决定如何把值写成文本。所以 Meta 不是可选的装饰，
 // 而是定律 B（parse(format(c)) == c）成立的前提。
 type Meta struct {
-	Desc     string `json:"desc,omitempty"`
-	Format   string `json:"format,omitempty"`   // 如 number 的 "%d"、时间的布局
+	Desc   string `json:"desc,omitempty"`
+	Format string `json:"format,omitempty"` // number 的 "%d"、time 的输出格式
+	// Input 只对 time 有意义：怎么把源文解析成时间。缺省按 RFC3339。
+	Input    string `json:"input,omitempty"`
 	Default  any    `json:"default,omitempty"`  // 缺失时的填充值
 	Nullable bool   `json:"nullable,omitempty"` // 允许空值
 	Required bool   `json:"required,omitempty"` // 对象属性是否必需
@@ -52,6 +54,9 @@ func ParseAbstractNode(v map[string]any) *AbstractNode {
 	if s, ok := v["format"].(string); ok {
 		m.Format = s
 	}
+	if s, ok := v["input"].(string); ok {
+		m.Input = s
+	}
 	if b, ok := v["nullable"].(bool); ok {
 		m.Nullable = b
 	}
@@ -75,6 +80,9 @@ func DumpAbstractNode(n AbstractNode) map[string]any {
 	}
 	if n.meta.Format != "" {
 		v["format"] = n.meta.Format
+	}
+	if n.meta.Input != "" {
+		v["input"] = n.meta.Input
 	}
 	if n.meta.Nullable {
 		v["nullable"] = true

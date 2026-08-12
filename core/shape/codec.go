@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/huge-zhang/zdog-template/core/shape/model"
 )
@@ -19,6 +20,9 @@ import (
 type Codec struct {
 	node model.Node
 	meta model.Meta
+	// time 类型的两个已编译布局：怎么读进来、怎么写出去。
+	inLayout  string
+	outLayout string
 }
 
 // NewCodec 由 shape 节点构造 codec。
@@ -27,6 +31,16 @@ func NewCodec(n model.Node) (*Codec, error) {
 		return nil, fmt.Errorf("shape: codec requires a non-nil node")
 	}
 	c := &Codec{node: n, meta: n.Meta()}
+	if n.Type() == model.TypeTime {
+		var err error
+		if c.inLayout, err = compileTimeLayout(c.meta.Input); err != nil {
+			return nil, err
+		}
+		if c.outLayout, err = compileTimeLayout(c.meta.Format); err != nil {
+			return nil, err
+		}
+		return c, nil
+	}
 	if err := c.validateFormat(); err != nil {
 		return nil, err
 	}
@@ -79,6 +93,23 @@ func (c *Codec) Encode(dst []byte, v any) ([]byte, error) {
 	}
 
 	switch c.node.Type() {
+	case model.TypeTime:
+		// 值已经是时间就直接写出去 —— 再"转成字符串又按 input 解析一遍"
+		// 不仅多余，而且在 input != format 时必然失败（Decode 的产物用的是
+		// 输出格式）。这一条是 Encode(Decode(x)) == x 成立的前提。
+		if t, ok := v.(time.Time); ok {
+			return formatTime(dst, c.outLayout, t), nil
+		}
+		s, err := coerceString(v)
+		if err != nil {
+			return dst, err
+		}
+		t, err := parseTime(c.inLayout, s)
+		if err != nil {
+			return dst, err
+		}
+		return formatTime(dst, c.outLayout, t), nil
+
 	case model.TypeString:
 		s, err := coerceString(v)
 		if err != nil {
@@ -129,6 +160,13 @@ func (c *Codec) Decode(raw []byte) (any, error) {
 		return nil, nil
 	}
 	switch c.node.Type() {
+	case model.TypeTime:
+		// 回读用**输出**格式解析 —— Decode 是 Encode 的逆运算（定律 B）。
+		t, err := parseTime(c.outLayout, s)
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
 	case model.TypeString:
 		return s, nil
 	case model.TypeNumber:
@@ -158,6 +196,8 @@ func coerceString(v any) (string, error) {
 	switch x := v.(type) {
 	case string:
 		return x, nil
+	case time.Time:
+		return x.Format(time.RFC3339Nano), nil
 	case []byte:
 		return string(x), nil
 	case json.Number:

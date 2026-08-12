@@ -390,6 +390,29 @@ JSON 只是加剧了它（要转义、要装箱、要哈希）。真想更便宜
 
 Encode 与 Decode 必须**互逆** —— 这就是定律 B 在 codec 层的表述，有专门的测试守护。
 
+**类型**：`string` `number` `bool` `time` `array` `dict` `object` `any`
+
+`time` 是唯一需要**两个**格式的类型：`input` 说明怎么把源文解析成时间，
+`format` 说明怎么写出去。两者都接受：
+
+| 写法 | 例子 |
+|---|---|
+| strftime 指示符 | `%Y-%m-%d %H:%M:%S`、`%d/%b/%Y:%H:%M:%S` |
+| 命名别名 | `iso8601` `rfc3339` `rfc1123` `date` `time` `datetime` `unix` `unix_ms` |
+| Go layout（逃生舱） | `2006年01月02日` —— 不含 `%` 时按 Go layout 处理 |
+
+> 用 strftime 而不是 Go 的参考时间布局，是因为 core 虽是 Go 写的，
+> **SDK 面向 Python / shell 用户，strftime 才是他们的母语**。
+
+```json
+"shape": {
+  "day":   { "type": "time", "format": "%Y/%m/%d" },
+  "clock": { "type": "time", "format": "%H:%M:%S" },
+  "epoch": { "type": "time", "format": "unix" },
+  "from_ts": { "type": "time", "input": "unix", "format": "iso8601" }
+}
+```
+
 职责：
 - `default` —— 值为 null 时的填充
 - `required` —— 值为 null 且无 default 时报错
@@ -655,7 +678,8 @@ Go 用户直接 `import core/`，不走 `.so`。
 |---|---|---|
 | ~~按字段名生效，无路径限定~~ | ✅ **已修**：支持路径限定键 `xs[].n`，优先于裸名；写 `null` 可在某条路径上显式关掉。mapping 同样支持 | — |
 | **声明 shape 即离开零拷贝快路径** | 按类型格式化意味着输出不再等于源文字节 | 这是刻意的显式取舍；不需要格式化就别声明 |
-| **`format` 只支持 number/string** | 复合类型退回 JSON | — |
+| ~~`format` 只支持 number/string~~ | ✅ **已修**：新增 `time` 类型，用 strftime 语法（`%Y-%m-%d`）+ 命名别名（`iso8601`/`unix`/`date`…）+ Go layout 逃生舱 | — |
+| **复合类型（array/dict/object）无 `format`** | 退回 JSON 序列化 | — |
 
 ### 12.5 JSON 入口层（ABI v2 的 parse / format / verify）
 

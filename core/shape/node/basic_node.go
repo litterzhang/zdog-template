@@ -29,6 +29,7 @@ func init() {
 	putParser(model.TypeBool, p)
 	putParser(model.TypeNumber, p)
 	putParser(model.TypeString, p)
+	putParser(model.TypeTime, p)
 }
 
 type basicParser struct{}

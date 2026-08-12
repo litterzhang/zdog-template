@@ -178,3 +178,89 @@ func TestNewCodecNil(t *testing.T) {
 		t.Error("NewCodec(nil): expected error")
 	}
 }
+
+// time 类型：日志转换里时间戳换格式是刚需，其它类型的 format 做不到。
+func TestCodecTime(t *testing.T) {
+	for _, tc := range []struct {
+		name, def string
+		in        any
+		want      string
+	}{
+		{"strftime 输出", `{"type":"time","format":"%Y-%m-%d %H:%M:%S"}`,
+			"2026-08-12T01:02:03Z", "2026-08-12 01:02:03"},
+		{"只要日期", `{"type":"time","format":"%Y/%m/%d"}`,
+			"2026-08-12T01:02:03Z", "2026/08/12"},
+		{"命名别名 date", `{"type":"time","format":"date"}`,
+			"2026-08-12T01:02:03Z", "2026-08-12"},
+		{"命名别名 datetime", `{"type":"time","format":"datetime"}`,
+			"2026-08-12T01:02:03Z", "2026-08-12 01:02:03"},
+		{"转 unix 秒", `{"type":"time","format":"unix"}`,
+			"2026-08-12T00:00:00Z", "1786492800"},
+		{"从 unix 秒读入", `{"type":"time","input":"unix","format":"date"}`,
+			"1786492800", "2026-08-12"},
+		{"从 unix 毫秒读入", `{"type":"time","input":"unix_ms","format":"%H:%M:%S"}`,
+			"1786492800000", "00:00:00"},
+		{"自定义输入格式", `{"type":"time","input":"%d/%b/%Y:%H:%M:%S","format":"iso8601"}`,
+			"12/Aug/2026:01:02:03", "2026-08-12T01:02:03Z"},
+		{"月份英文名", `{"type":"time","format":"%d %B %Y"}`,
+			"2026-08-12T00:00:00Z", "12 August 2026"},
+		{"Go layout 逃生舱", `{"type":"time","format":"2006年01月02日"}`,
+			"2026-08-12T00:00:00Z", "2026年08月12日"},
+		{"缺省输入输出都是 RFC3339", `{"type":"time"}`,
+			"2026-08-12T01:02:03Z", "2026-08-12T01:02:03Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := enc(t, codec(t, tc.def), tc.in); got != tc.want {
+				t.Errorf("Encode(%v) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// 定律 B 在 time 上同样要成立：Decode 用**输出**格式解析，是 Encode 的逆。
+func TestCodecTimeEncodeDecodeInverse(t *testing.T) {
+	for _, tc := range []struct{ def, in string }{
+		{`{"type":"time","format":"%Y-%m-%d %H:%M:%S"}`, "2026-08-12T01:02:03Z"},
+		{`{"type":"time","format":"iso8601"}`, "2026-08-12T01:02:03Z"},
+		{`{"type":"time","format":"unix"}`, "2026-08-12T01:02:03Z"},
+		// input 与 format 不同时，Decode 用的是 **format**（它是 Encode 的逆），
+		// 所以往返闭合的是输出侧的格式。
+		{`{"type":"time","input":"unix","format":"iso8601"}`, "1786492800"},
+	} {
+		def := tc.def
+		c := codec(t, def)
+		encoded, err := c.Encode(nil, tc.in)
+		if err != nil {
+			t.Fatalf("%s Encode: %v", def, err)
+		}
+		back, err := c.Decode(encoded)
+		if err != nil {
+			t.Fatalf("%s Decode(%q): %v", def, encoded, err)
+		}
+		again, err := c.Encode(nil, back)
+		if err != nil {
+			t.Fatalf("%s re-Encode: %v", def, err)
+		}
+		if string(again) != string(encoded) {
+			t.Errorf("定律 B 违反 %s: %q -> %v -> %q", def, encoded, back, again)
+		}
+	}
+}
+
+func TestCodecTimeErrors(t *testing.T) {
+	for _, tc := range []struct{ def, want string }{
+		{`{"type":"time","format":"%Q"}`, "unsupported directive %Q"},
+		{`{"type":"time","format":"%Y-%m-%"}`, "dangling %"},
+		{`{"type":"time","input":"%Q"}`, "unsupported directive"},
+	} {
+		if _, err := shape.LoadCodec([]byte(tc.def)); err == nil {
+			t.Errorf("%s: 应当在编译期报错", tc.def)
+		} else if !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: error = %q, want %q", tc.def, err, tc.want)
+		}
+	}
+	c := codec(t, `{"type":"time","format":"date"}`)
+	if _, err := c.Encode(nil, "not a timestamp"); err == nil {
+		t.Error("无法解析的时间应当报错")
+	}
+}
