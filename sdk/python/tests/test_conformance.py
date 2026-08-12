@@ -5,7 +5,7 @@
 
 import pytest
 
-from ztpl import Template, ZtplCompileError
+from ztemplate import Template, ZtplCompileError
 
 from conftest import load_cases
 

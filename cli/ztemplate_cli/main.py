@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from ztpl import ZtplCompileError, ZtplError
+from ztemplate import ZtplCompileError, ZtplError
 
 from . import commands, term
 from .sources import UsageError
@@ -128,11 +128,11 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.version:
-        from ztpl import abi_version
+        from ztemplate import abi_version
 
-        from . import __version__
+        from . import DIST_NAME, __version__
 
-        print(f"ztpl-cli {__version__}")
+        print(f"{DIST_NAME} {__version__}")
         try:
             print(f"libztpl ABI v{abi_version()}")
         except ZtplError as exc:

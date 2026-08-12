@@ -4,7 +4,7 @@ import ctypes
 
 import pytest
 
-from ztpl import Template, ZtplCompileError, ZtplError, abi_version, lib_path
+from ztemplate import Template, ZtplCompileError, ZtplError, abi_version, lib_path
 
 
 def test_abi_version():

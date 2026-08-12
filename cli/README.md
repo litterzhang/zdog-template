@@ -1,8 +1,8 @@
-# ztpl-cli
+# zdog-template-cli
 
 Z-Template 的命令行 —— 用来快速体验双向模板。
 
-完全建立在 [`ztpl` Python SDK](../sdk/python) 之上：不碰 ctypes、不碰 `.so`。
+完全建立在 [`zdog-template` Python SDK](../sdk/python) 之上：不碰 ctypes、不碰 `.so`。
 CLI 做不到的事就说明 SDK 缺东西 —— 这是对 SDK 能力面的一道约束。
 
 ## 安装

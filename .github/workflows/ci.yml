@@ -142,7 +142,7 @@ jobs:
           uv pip install "$GITHUB_WORKSPACE"/sdk/python/dist/*.whl
           # 不设 ZTPL_LIB：必须靠 wheel 内自带的 .so 找到库
           uv run python -c "
-          from ztpl import Template, abi_version, lib_path
+          from ztemplate import Template, abi_version, lib_path
           print('ABI', abi_version(), 'from', lib_path())
           with Template('[\${a}] \${b}', target='\${b}/\${a}') as t:
               assert t.transform_text('[x] y') == 'y/x\n'

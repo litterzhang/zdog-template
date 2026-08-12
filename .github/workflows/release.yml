@@ -55,7 +55,7 @@ jobs:
         run: |
           ext=so; [ "$RUNNER_OS" = macOS ] && ext=dylib
           go build -buildmode=c-shared -o "cshared/libztpl.$ext" ./cshared/
-          cp cshared/libztpl.* sdk/python/ztpl/
+          cp cshared/libztpl.* sdk/python/ztemplate/
           cd sdk/python && uv build --wheel
 
       # 装到干净环境跑一遍。这一步在写 CI 当天就抓到过 .so 没进 wheel 的问题。
@@ -64,7 +64,7 @@ jobs:
           cd "$(mktemp -d)"
           uv venv && uv pip install "$GITHUB_WORKSPACE"/sdk/python/dist/*.whl
           uv run python -c "
-          from ztpl import Template, abi_version, lib_path
+          from ztemplate import Template, abi_version, lib_path
           print('ABI', abi_version(), lib_path())
           with Template('[\${a}] \${b}', target='\${b}/\${a}') as t:
               assert t.transform_text('[x] y') == 'y/x\n'
@@ -77,7 +77,7 @@ jobs:
 
   # ── CLI 是纯 Python，一个 wheel 通吃 ──────────────────────────
   cli-wheel:
-    name: wheel (ztpl-cli)
+    name: wheel (zdog-template-cli)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

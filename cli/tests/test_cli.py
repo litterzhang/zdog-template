@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ztpl_cli.main import main
+from ztemplate_cli.main import main
 
 LOG = '[T1] error disk full payload={"host":"web-1","pct":95}'
 SRC = r"[${ts}] ${re|name=lv,expr=\w+} ${msg} payload=${json|name=p}"
@@ -172,7 +172,7 @@ def test_input_file(capsys, tmp_path):
 def test_version(capsys):
     code, out, _ = run(capsys, "--version")
     assert code == 0
-    assert "ztpl-cli" in out
+    assert "zdog-template-cli" in out
     assert "ABI v3" in out
 
 

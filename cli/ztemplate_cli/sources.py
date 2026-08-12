@@ -6,7 +6,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from ztpl import Template, ZtplError
+from ztemplate import Template, ZtplError
 
 
 class UsageError(ZtplError):

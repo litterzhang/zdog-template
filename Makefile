@@ -50,7 +50,7 @@ py-test: build ## Python SDK 全部测试
 	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) run pytest
 
 py-build: build ## 构建 Python wheel（先把 .so 拷进包内）
-	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztpl/
+	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztemplate/
 	# 必须 --wheel：默认的 uv build 会先打 sdist 再从 sdist 建 wheel，
 	# 而 .so 是平台产物不进 sdist，那样 wheel 里就没有库了。
 	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build --wheel
@@ -86,7 +86,7 @@ bench: build ## 性能门禁
 
 clean: ## 清理构建产物
 	rm -f cshared/libztpl.so cshared/libztpl.dylib cshared/libztpl.h
-	rm -f $(PYDIR)/ztpl/libztpl.* 
+	rm -f $(PYDIR)/ztemplate/libztpl.* 
 	rm -rf $(PYDIR)/dist $(PYDIR)/.pytest_cache $(CLIDIR)/dist $(CLIDIR)/.pytest_cache
 	find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 

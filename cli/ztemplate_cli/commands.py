@@ -3,7 +3,7 @@
 import json
 import sys
 
-from ztpl import Template
+from ztemplate import Template
 
 from . import term
 from .sources import load_config, open_input, open_template

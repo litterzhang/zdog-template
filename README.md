@@ -18,7 +18,7 @@ Go 写的核心，`ctypes` 薄壳的 Python SDK，外加一个命令行。
 ```bash
 git clone https://github.com/litterzhang/zdog-template && cd zdog-template
 make build                                # 构建 libztpl.so（需要 Go 1.25+ 和 gcc）
-uv tool install --from ./cli ztpl-cli     # 装 ztpl 命令
+uv tool install --from ./cli zdog-template-cli     # 装 ztpl 命令
 ztpl demo                                 # 跑一个自带的完整例子
 ```
 
@@ -89,7 +89,7 @@ $ ztpl verify -s '[${ts}] ${lv} ${msg}' --text '[T1] error disk full'
 ## Python SDK
 
 ```python
-from ztpl import Template
+from ztemplate import Template
 
 # 只做解析时不需要目标模板
 with Template("[${ts}] ${lv} payload=${json|name=p}") as t:

@@ -5,7 +5,7 @@
 | 包 | 内容 | wheel 类型 |
 |---|---|---|
 | `ztpl` | Python SDK + 平台相关的 `libztpl.so` | **每平台一个** |
-| `ztpl-cli` | 命令行，纯 Python，依赖 `ztpl` | 一个通吃 |
+| `zdog-template-cli` | 命令行，纯 Python，依赖 `ztpl` | 一个通吃 |
 
 ## 一次性准备：Trusted Publishing
 
@@ -13,11 +13,11 @@
 
 包名首次发布前 PyPI 上还没有项目，所以要用 **pending publisher**：
 <https://pypi.org/manage/account/publishing/> → 添加，两个包各填一次
-（`ztpl` 与 `ztpl-cli`）：
+（`ztpl` 与 `zdog-template-cli`）：
 
 | 字段 | 值 |
 |---|---|
-| PyPI Project Name | `ztpl` / `ztpl-cli` |
+| PyPI Project Name | `ztpl` / `zdog-template-cli` |
 | Owner | `litterzhang` |
 | Repository name | `zdog-template` |
 | Workflow name | `release.yml` |
@@ -39,8 +39,8 @@ workflow 会构建各平台 wheel、在干净环境里冒烟验证，然后发�
 验证：
 
 ```bash
-uv run --with ztpl python -c "
-from ztpl import Template
+uv run --with zdog-template python -c "
+from ztemplate import Template
 print(Template('[\${a}] \${b}', target='\${b}/\${a}').transform_text('[x] y'))"
 ```
 
@@ -72,7 +72,7 @@ print(Template('[\${a}] \${b}', target='\${b}/\${a}').transform_text('[x] y'))"
 docker run --rm -v "$PWD:/src" -w /src quay.io/pypa/manylinux_2_28_x86_64 bash -c '
   curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xz
   export PATH=$PATH:/usr/local/go/bin
-  make build && cp cshared/libztpl.so sdk/python/ztpl/
+  make build && cp cshared/libztpl.so sdk/python/ztemplate/
   cd sdk/python && ZTPL_WHEEL_TAG=py3-none-manylinux_2_28_x86_64 uv build --wheel'
 ```
 
@@ -91,7 +91,7 @@ sdist 里没有 `.so`，装的人需要有 Go 工具链才能用 —— 但 `pip
 
 ### CLI 的路径依赖
 
-`cli/pyproject.toml` 里有 `[tool.uv.sources] ztpl = { path = "../sdk/python" }`，
+`cli/pyproject.toml` 里有 `[tool.uv.sources] zdog-template = { path = "../sdk/python" }`，
 方便本地开发。这段是 uv 专有的、不会进 wheel 元数据，但 release workflow 仍会
 在构建前把它剥掉，免得哪天 uv 改了行为。
 

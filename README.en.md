@@ -18,7 +18,7 @@ A Go core, a thin `ctypes` Python SDK, and a CLI.
 ```bash
 git clone https://github.com/litterzhang/zdog-template && cd zdog-template
 make build                                # builds libztpl.so (needs Go 1.25+ and a C compiler)
-uv tool install --from ./cli ztpl-cli     # installs the `ztpl` command
+uv tool install --from ./cli zdog-template-cli     # installs the `ztpl` command
 ztpl demo                                 # runs a self-contained example
 ```
 
@@ -89,7 +89,7 @@ The trick isn't "generating faster code" — it's **moving repeated decisions fr
 ## Python SDK
 
 ```python
-from ztpl import Template
+from ztemplate import Template
 
 # No target template needed when you only parse
 with Template("[${ts}] ${lv} payload=${json|name=p}") as t:

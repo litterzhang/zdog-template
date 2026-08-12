@@ -16,7 +16,7 @@ uv run pytest                 # 跑测试 + 一致性用例
 ## 用法
 
 ```python
-from ztpl import Template
+from ztemplate import Template
 
 # 只做解析时不需要目标模板
 with Template("[${ts}] ${lv} ${msg} payload=${json|name=p}") as t:
@@ -89,7 +89,7 @@ mapping={
 
 ## 命令行
 
-见 [ztpl-cli](../../cli) —— 建立在本 SDK 之上，`ztpl demo` 可快速上手。
+见 [zdog-template-cli](../../cli) —— 建立在本 SDK 之上，`ztpl demo` 可快速上手。
 
 ## 设计
 

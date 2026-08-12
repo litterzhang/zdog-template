@@ -15,7 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "sdk" / "python"))
 
-from ztpl import Template  # noqa: E402
+from ztemplate import Template  # noqa: E402
 
 LINE = '[2026-08-12T01:00:00Z] ERROR disk full payload={"host":"web-1","pct":95}'
 NLINES = 5000

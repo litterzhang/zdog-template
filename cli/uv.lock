@@ -141,7 +141,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ztpl"
+name = "zdog-template"
 version = "0.1.0"
 source = { editable = "../sdk/python" }
 
@@ -151,11 +151,11 @@ source = { editable = "../sdk/python" }
 dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
-name = "ztpl-cli"
+name = "zdog-template-cli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "ztpl" },
+    { name = "zdog-template" },
 ]
 
 [package.dev-dependencies]
@@ -164,7 +164,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ztpl", editable = "../sdk/python" }]
+requires-dist = [{ name = "zdog-template", editable = "../sdk/python" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]

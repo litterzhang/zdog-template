@@ -620,7 +620,7 @@ zdog-template/
 │   └── mapping/               # 新：JMESPath 求值 + 路径写入
 ├── cshared/abi.go             # //export 薄封装 -> libztpl.so
 ├── conformance/cases/*.json   # ★ 多语言语义真源
-├── sdk/python/ztpl/           # ctypes SDK
+├── sdk/python/ztemplate/           # ctypes SDK
 └── bench/                     # 性能门禁
 ```
 
