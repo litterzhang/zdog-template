@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/huge-zhang/zdog-template/core/template/element"
-	"github.com/huge-zhang/zdog-template/core/template/extension"
-	"github.com/huge-zhang/zdog-template/core/template/model"
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/element"
+	"github.com/litterzhang/zdog-template/core/template/extension"
+	"github.com/litterzhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 func init() {

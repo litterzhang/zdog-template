@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/huge-zhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/model"
 )
 
 // OpKind 是算子种类。

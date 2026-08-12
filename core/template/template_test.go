@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/template"
-	"github.com/huge-zhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template"
+	"github.com/litterzhang/zdog-template/core/template/model"
 )
 
 func load(t *testing.T, src string) *template.Template {

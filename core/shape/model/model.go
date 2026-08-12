@@ -2,7 +2,7 @@
 // 复用自旧原型 shape/model，补充 codec 所需的元信息。
 package model
 
-import "github.com/huge-zhang/zdog-template/core/common"
+import "github.com/litterzhang/zdog-template/core/common"
 
 // Type 是 shape 节点的类型标签。
 type Type string

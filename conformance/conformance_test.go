@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/conformance"
-	"github.com/huge-zhang/zdog-template/core/engine"
-	"github.com/huge-zhang/zdog-template/core/pipeline"
+	"github.com/litterzhang/zdog-template/conformance"
+	"github.com/litterzhang/zdog-template/core/engine"
+	"github.com/litterzhang/zdog-template/core/pipeline"
 )
 
 func loadCases(t *testing.T) []conformance.Case {

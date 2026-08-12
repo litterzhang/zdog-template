@@ -17,7 +17,7 @@ dependencies = ["ztpl"]
 ztpl = "ztpl_cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/huge-zhang/zdog-template"
+Homepage = "https://github.com/litterzhang/zdog-template"
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

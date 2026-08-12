@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/pipeline"
+	"github.com/litterzhang/zdog-template/core/pipeline"
 )
 
 const (

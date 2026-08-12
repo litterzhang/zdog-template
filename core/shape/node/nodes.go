@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/huge-zhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/model"
 )
 
 var (

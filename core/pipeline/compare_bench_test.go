@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/pipeline"
+	"github.com/litterzhang/zdog-template/core/pipeline"
 )
 
 // 这组基准回答一个问题：既然 parse | format ≡ transform，

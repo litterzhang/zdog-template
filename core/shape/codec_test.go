@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/shape"
+	"github.com/litterzhang/zdog-template/core/shape"
 )
 
 func codec(t *testing.T, def string) *shape.Codec {

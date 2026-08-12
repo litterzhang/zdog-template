@@ -3,7 +3,7 @@ package node
 import (
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/model"
 )
 
 // Any 表示不约束结构的任意值。

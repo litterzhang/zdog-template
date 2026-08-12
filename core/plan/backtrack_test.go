@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huge-zhang/zdog-template/core/template"
+	"github.com/litterzhang/zdog-template/core/template"
 
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // 扁平引擎在每个定界点取首次匹配，下面这些模板因此会失败。

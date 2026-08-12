@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/engine"
+	"github.com/litterzhang/zdog-template/core/engine"
 )
 
 func newEngine(t *testing.T, src string) *engine.Engine {

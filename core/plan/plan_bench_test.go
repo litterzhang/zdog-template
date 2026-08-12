@@ -3,8 +3,8 @@ package plan_test
 import (
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/plan"
-	"github.com/huge-zhang/zdog-template/core/template"
+	"github.com/litterzhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/template"
 )
 
 const benchLine = `[2026-08-12T01:00:00Z] ERROR disk full payload={"host":"web-1","pct":95}`

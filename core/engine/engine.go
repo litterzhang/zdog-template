@@ -4,9 +4,9 @@ package engine
 import (
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/binding"
-	"github.com/huge-zhang/zdog-template/core/plan"
-	"github.com/huge-zhang/zdog-template/core/template"
+	"github.com/litterzhang/zdog-template/core/binding"
+	"github.com/litterzhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/template"
 )
 
 // Engine 是一份编译好的双向模板。不可变，可被多 goroutine 并发使用

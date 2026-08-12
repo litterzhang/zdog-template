@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/huge-zhang/zdog-template/core/mapping"
-	"github.com/huge-zhang/zdog-template/core/plan"
-	"github.com/huge-zhang/zdog-template/core/shape"
+	"github.com/litterzhang/zdog-template/core/mapping"
+	"github.com/litterzhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/shape"
 )
 
 // slotSource 描述目标某个标量槽位的取值方式。

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/huge-zhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/model"
 )
 
 // Object 表示带命名属性的对象类型。

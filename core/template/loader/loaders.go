@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/huge-zhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/model"
 )
 
 var (

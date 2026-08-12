@@ -3,7 +3,7 @@ package binding
 import (
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // Context 承载一次 parse 的全部绑定，或一份待 format 的目标数据。

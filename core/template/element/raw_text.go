@@ -2,8 +2,8 @@
 package element
 
 import (
-	"github.com/huge-zhang/zdog-template/core/template/model"
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 // RawText 是字面量锚点。它是确定性的：要么在当前位置原样出现，要么失败。

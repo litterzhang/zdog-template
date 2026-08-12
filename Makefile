@@ -9,9 +9,19 @@ SOEXT := dylib
 endif
 LIB := cshared/libztpl.$(SOEXT)
 
-.PHONY: all build test bench conformance fmt vet clean help py-sync py-test py-build cli-sync cli-test demo
+.PHONY: all ci build test bench conformance fmt fmt-check vet alloc clean help py-sync py-test py-build cli-sync cli-test demo
 
 all: build test conformance cli-test ## 构建 + 全部测试 + 一致性用例
+
+ci: fmt-check vet test conformance cli-test alloc ## CI 跑的全套（本地可复现）
+
+fmt-check: ## 检查格式（不修改）
+	@out=$$(gofmt -l core cshared conformance); \
+	if [ -n "$$out" ]; then echo "未格式化:"; echo "$$out"; exit 1; fi
+	@echo "gofmt clean"
+
+alloc: ## 零分配门禁 —— 分配次数是确定性的，适合做 CI 硬门禁
+	$(GO) test -run Alloc -v ./core/pipeline/
 
 build: $(LIB) ## 构建 C 共享库
 
@@ -41,7 +51,9 @@ py-test: build ## Python SDK 全部测试
 
 py-build: build ## 构建 Python wheel（先把 .so 拷进包内）
 	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztpl/
-	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build
+	# 必须 --wheel：默认的 uv build 会先打 sdist 再从 sdist 建 wheel，
+	# 而 .so 是平台产物不进 sdist，那样 wheel 里就没有库了。
+	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build --wheel
 
 cli-sync: ## 同步 CLI 依赖
 	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) sync

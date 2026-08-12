@@ -21,8 +21,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/huge-zhang/zdog-template"
-Design = "https://github.com/huge-zhang/zdog-template/blob/main/docs/DESIGN.md"
+Homepage = "https://github.com/litterzhang/zdog-template"
+Design = "https://github.com/litterzhang/zdog-template/blob/main/docs/DESIGN.md"
 
 [dependency-groups]
 dev = [
@@ -35,8 +35,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ztpl"]
-# 共享库随 wheel 一起分发（构建前先跑 make build）
-artifacts = ["ztpl/libztpl.*"]
+# 共享库随 wheel 一起分发。artifacts 用来强制包含被 .gitignore 忽略的文件。
+#
+# 注意必须用 `uv build --wheel` 直接构建：默认的 `uv build` 会先打 sdist、
+# 再从 sdist 构建 wheel，而 .so 是平台产物不该进 sdist —— 于是 wheel 里也就没有了。
+artifacts = ["ztpl/libztpl.*", "ztpl/ztpl.dll"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huge-zhang/zdog-template/core/template/element"
-	"github.com/huge-zhang/zdog-template/core/template/loader"
-	"github.com/huge-zhang/zdog-template/core/template/model"
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/element"
+	"github.com/litterzhang/zdog-template/core/template/loader"
+	"github.com/litterzhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 // Template 是一份已加载的模板。它是双向的 —— 同一份模板既能 parse 也能 format。

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/huge-zhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/model"
 )
 
 // Codec 按 shape 在「值」与「字节」之间双向转换。

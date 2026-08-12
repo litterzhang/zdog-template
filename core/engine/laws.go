@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/binding"
+	"github.com/litterzhang/zdog-template/core/binding"
 )
 
 // LawViolation 描述一次 round-trip 定律的违反。

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huge-zhang/zdog-template/core/template/model"
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 // EachBlock 是重复块 `${each|name=X,sep=S}...${end}`。

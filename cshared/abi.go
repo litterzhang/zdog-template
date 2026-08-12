@@ -22,7 +22,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/huge-zhang/zdog-template/core/pipeline"
+	"github.com/litterzhang/zdog-template/core/pipeline"
 )
 
 // AbiVersion 是 ABI 版本 —— C 函数签名的契约，加函数就要升。

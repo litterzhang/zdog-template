@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/huge-zhang/zdog-template/core/template/model"
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/model"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 // Hole 是一个待填充的洞。

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/template/syntax"
+	"github.com/litterzhang/zdog-template/core/template/syntax"
 )
 
 // 验证 json.Decoder.InputOffset() 能精确给出嵌入 JSON 值的结束位置 ——

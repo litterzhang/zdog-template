@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/shape"
-	"github.com/huge-zhang/zdog-template/core/shape/model"
-	"github.com/huge-zhang/zdog-template/core/shape/node"
+	"github.com/litterzhang/zdog-template/core/shape"
+	"github.com/litterzhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/node"
 )
 
 func mustLoad(t *testing.T, s string) *shape.Shape {

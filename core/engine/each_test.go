@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/engine"
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/engine"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // items 把某个重复块的字段抽成便于断言的形状。

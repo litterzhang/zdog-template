@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上新的推送取消旧的运行 —— cgo 构建不便宜，别浪费。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  # ── 一致性与正确性 ─────────────────────────────────────────────
+  # 跑在 Linux 上，因为这是唯一的目标平台（见 DESIGN.md §12.7）。
+  test:
+    name: test (linux/amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
+
+      - name: gofmt
+        run: |
+          # gofmt 不返回非零退出码，只能靠输出判断
+          unformatted=$(gofmt -l core cshared conformance)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化："; echo "$unformatted"
+            gofmt -d core cshared conformance
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+      - name: 构建共享库
+        run: make build
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python SDK 测试
+        working-directory: sdk/python
+        run: uv run --frozen pytest -q
+
+      - name: CLI 测试
+        working-directory: cli
+        run: uv run --frozen pytest -q
+
+      # conformance 是跨语言的语义真源：同一套 cases/*.json，两种语言各跑一遍。
+      # 它已经两次抓出 SDK 与 core 的分歧（shape 参数、format 不过 mapping）。
+      - name: 一致性用例（Go + Python）
+        run: make conformance
+
+  # ── 性能门禁 ──────────────────────────────────────────────────
+  # 只对**分配次数**设硬门禁（确定性，CI 上不抖）；墙钟时间仅作记录，
+  # 因为共享 runner 上的耗时会因邻居负载差 2~3 倍，拿它设阈值必然假失败。
+  perf:
+    name: 性能门禁
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
+
+      - name: 零分配门禁（硬）
+        run: go test -run Alloc -v ./core/pipeline/
+
+      - name: 基准（仅记录，不设阈值）
+        run: |
+          go test -run=XXX -bench=. -benchtime=200000x ./core/plan/ | tee -a "$GITHUB_STEP_SUMMARY"
+          go test -run=XXX -bench=. -benchtime=2000x ./core/pipeline/ | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ── 多平台构建 ────────────────────────────────────────────────
+  # 生产只跑 linux/amd64，但开发者的笔记本多半是 macOS ARM —— 至少要保证
+  # 那边能构建出来，否则本地连测试都跑不了（见 DESIGN.md §12.7）。
+  build:
+    name: 构建 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: libztpl-linux-amd64
+          - os: macos-latest      # macos-latest 目前是 arm64
+            artifact: libztpl-darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
+
+      - name: 构建共享库
+        run: make build
+
+      - name: 冒烟 —— 库能被加载并跑通
+        run: go test ./conformance/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            cshared/libztpl.*
+          retention-days: 14
+
+  # ── Python 包 ────────────────────────────────────────────────
+  wheel:
+    name: 构建 wheel
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
+      - uses: astral-sh/setup-uv@v5
+
+      - name: 构建 wheel（.so 打进包内）
+        run: make py-build
+
+      - name: 装上来跑一遍 —— 确认 .so 真的进了 wheel
+        run: |
+          cd /tmp
+          uv venv
+          uv pip install "$GITHUB_WORKSPACE"/sdk/python/dist/*.whl
+          # 不设 ZTPL_LIB：必须靠 wheel 内自带的 .so 找到库
+          uv run python -c "
+          from ztpl import Template, abi_version, lib_path
+          print('ABI', abi_version(), 'from', lib_path())
+          with Template('[\${a}] \${b}', target='\${b}/\${a}') as t:
+              assert t.transform_text('[x] y') == 'y/x\n'
+          print('wheel 自带的 .so 工作正常')
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel
+          path: sdk/python/dist/*
+          retention-days: 14

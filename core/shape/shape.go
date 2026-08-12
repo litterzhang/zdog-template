@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/shape/model"
-	"github.com/huge-zhang/zdog-template/core/shape/node"
+	"github.com/litterzhang/zdog-template/core/shape/model"
+	"github.com/litterzhang/zdog-template/core/shape/node"
 )
 
 // Shape 是一棵带标题的类型树。

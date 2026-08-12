@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huge-zhang/zdog-template/core/mapping"
+	"github.com/litterzhang/zdog-template/core/mapping"
 )
 
 // mapEnv 是测试用的简单环境。

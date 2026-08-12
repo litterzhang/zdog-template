@@ -12,7 +12,7 @@ package binding
 import (
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // Binding 是一个绑定：值 + 出处。

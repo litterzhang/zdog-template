@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/huge-zhang/zdog-template/core/binding"
-	"github.com/huge-zhang/zdog-template/core/engine"
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/binding"
+	"github.com/litterzhang/zdog-template/core/engine"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // 本文件提供以 JSON 为交换格式的入口，服务于 SDK 与 CLI。

@@ -2,7 +2,7 @@
 // 复用自旧原型 template/model，关键改造见 element.go。
 package model
 
-import "github.com/huge-zhang/zdog-template/core/common"
+import "github.com/litterzhang/zdog-template/core/common"
 
 // Tag 标识模板元素的种类。
 type Tag string

@@ -14,9 +14,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/huge-zhang/zdog-template/core/engine"
-	"github.com/huge-zhang/zdog-template/core/mapping"
-	"github.com/huge-zhang/zdog-template/core/plan"
+	"github.com/litterzhang/zdog-template/core/engine"
+	"github.com/litterzhang/zdog-template/core/mapping"
+	"github.com/litterzhang/zdog-template/core/plan"
 )
 
 // ConfigVersion 是当前配置格式版本。
