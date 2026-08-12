@@ -27,9 +27,18 @@ def _platform_tag() -> str:
     return sysconfig.get_platform().replace("-", "_").replace(".", "_")
 
 
+def wheel_tag() -> str:
+    """本次构建该用的 wheel 标签。
+
+    注意用 `or` 而不是 `get` 的默认值：CI matrix 里"不指定标签"写成
+    `tag: ""`，环境变量就是**已设置但为空**，此时 `.get(k, default)` 返回的
+    是空串而不是默认值，会让 hatchling 抛 InvalidTag。v0.1.0 的 macOS
+    构建就是这么挂的。
+    """
+    return os.environ.get("ZTPL_WHEEL_TAG") or f"py3-none-{_platform_tag()}"
+
+
 class CustomBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
         build_data["pure_python"] = False
-        build_data["tag"] = os.environ.get(
-            "ZTPL_WHEEL_TAG", f"py3-none-{_platform_tag()}"
-        )
+        build_data["tag"] = wheel_tag()

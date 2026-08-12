@@ -54,7 +54,10 @@ jobs:
           ZTPL_WHEEL_TAG: ${{ matrix.tag }}
         run: |
           ext=so; [ "$RUNNER_OS" = macOS ] && ext=dylib
-          go build -buildmode=c-shared -o "cshared/libztpl.$ext" ./cshared/
+          # -buildvcs=false：manylinux 容器里 checkout 的属主与运行用户不同，
+          # git 会以 dubious ownership 拒绝，Go 取 VCS 信息就失败。
+          # 我们也不需要把 commit 戳进 .so，顺带让构建更可复现。
+          go build -buildvcs=false -buildmode=c-shared -o "cshared/libztpl.$ext" ./cshared/
           cp cshared/libztpl.* sdk/python/ztemplate/
           cd sdk/python && uv build --wheel
 

@@ -28,6 +28,8 @@ Design = "https://github.com/litterzhang/zdog-template/blob/main/docs/DESIGN.md"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    # 构建期依赖，但 tests/ 里要测 hatch_build.py 这个钩子
+    "hatchling",
 ]
 
 [build-system]

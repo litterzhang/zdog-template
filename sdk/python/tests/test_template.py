@@ -1,6 +1,7 @@
 """SDK 层单测：生命周期、错误处理、缓冲扩容。"""
 
 import ctypes
+import pathlib
 
 import pytest
 
@@ -382,3 +383,24 @@ def test_format_stream_round_trips():
         out = io.BytesIO()
         t.format_stream(mid, out, chunk_size=96)
         assert out.getvalue() == t.transform(src).output
+
+
+def test_wheel_tag_env_empty_string_falls_back(monkeypatch):
+    """回归：CI matrix 里"不指定标签"写成 tag: ""，环境变量是**已设置但为空**。
+
+    os.environ.get(k, default) 此时返回空串而不是默认值，会让 hatchling
+    抛 InvalidTag —— v0.1.0 的 macOS 构建就是这么挂的。
+    """
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from hatch_build import wheel_tag
+
+    monkeypatch.setenv("ZTPL_WHEEL_TAG", "")
+    assert wheel_tag(), "环境变量为空串时必须回退到推断的标签"
+    assert wheel_tag().startswith("py3-none-")
+
+    monkeypatch.delenv("ZTPL_WHEEL_TAG", raising=False)
+    assert wheel_tag().startswith("py3-none-")
+
+    monkeypatch.setenv("ZTPL_WHEEL_TAG", "py3-none-manylinux_2_28_x86_64")
+    assert wheel_tag() == "py3-none-manylinux_2_28_x86_64"

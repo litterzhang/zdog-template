@@ -148,7 +148,10 @@ source = { editable = "../sdk/python" }
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "hatchling" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
 name = "zdog-template-cli"
