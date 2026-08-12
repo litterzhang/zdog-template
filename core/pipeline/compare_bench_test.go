@@ -8,10 +8,12 @@ import (
 	"github.com/huge-zhang/zdog-template/core/pipeline"
 )
 
-// 这组基准回答一个问题：transform 凭什么比 format 快？
+// 这组基准回答一个问题：既然 parse | format ≡ transform，
+// 绕一趟中间态凭什么贵 29 倍？
 //
-// 答案不是"transform 被优化过"，而是**两者做的工作量根本不同**。
-// 下面把 format 的成本逐层剥开，看它到底花在哪。
+// 答案是中间态的形态：transform 的中间态是指向原始 buffer 的 span，从不物化；
+// 一旦要把中间态拿出来看（NDJSON），就必须写成字节再读回来。
+// 下面把这一去一回的成本剥开 —— 其中 json.Decode 独占大头。
 
 const (
 	cmpText = `[T1] error`               // transform 的输入：源文本
