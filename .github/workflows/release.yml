@@ -1,0 +1,133 @@
+name: Release
+
+# 打 tag 触发；也可以手动跑一次先发到 TestPyPI 试水。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 发到哪里
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  # ── 平台 wheel ────────────────────────────────────────────────
+  # 包里带 .so，所以每个平台都要单独构建。标签由 hatch_build.py 决定。
+  wheels:
+    name: wheel (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux 在 manylinux 容器里构建：PyPI 直接拒绝 linux_x86_64 标签，
+          # 而且容器里的 glibc 更老，构出来的 .so 兼容面更宽。
+          - name: manylinux-x86_64
+            os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            tag: py3-none-manylinux_2_28_x86_64
+          - name: macos-arm64
+            os: macos-latest
+            tag: ""            # 留空则由钩子从当前平台推断
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # manylinux 容器里没有 Go，直接装官方 tarball —— setup-go 在这种
+      # 老发行版容器里未必可用。
+      - name: 安装 Go（容器内）
+        if: matrix.container != ''
+        run: |
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.0.linux-amd64.tar.gz" -o /tmp/go.tgz
+          tar -C /usr/local -xzf /tmp/go.tgz
+          echo /usr/local/go/bin >> "$GITHUB_PATH"
+
+      - uses: actions/setup-go@v5
+        if: matrix.container == ''
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.mod
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: 构建 .so 并打包
+        env:
+          ZTPL_WHEEL_TAG: ${{ matrix.tag }}
+        run: |
+          go build -buildmode=c-shared -o cshared/libztpl.$( [ "$RUNNER_OS" = macOS ] && echo dylib || echo so ) ./cshared/
+          cp cshared/libztpl.* sdk/python/ztpl/
+          cd sdk/python && uv build --wheel
+
+      # 装到干净环境跑一遍。这一步在写 CI 当天就抓到过 .so 没进 wheel 的问题。
+      - name: 冒烟 —— 只靠 wheel 自带的库
+        run: |
+          cd "$(mktemp -d)"
+          uv venv && uv pip install "$GITHUB_WORKSPACE"/sdk/python/dist/*.whl
+          uv run python -c "
+          from ztpl import Template, abi_version, lib_path
+          print('ABI', abi_version(), lib_path())
+          with Template('[\${a}] \${b}', target='\${b}/\${a}') as t:
+              assert t.transform_text('[x] y') == 'y/x\n'
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.name }}
+          path: sdk/python/dist/*.whl
+
+  # ── CLI 是纯 Python，一个 wheel 通吃 ──────────────────────────
+  cli-wheel:
+    name: wheel (ztpl-cli)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: 构建
+        # 去掉本地路径依赖：发布版要从 PyPI 解析 ztpl
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re
+          p = pathlib.Path("cli/pyproject.toml")
+          s = p.read_text()
+          s = re.sub(r"\n\[tool\.uv\.sources\][^\[]*", "\n", s)
+          p.write_text(s)
+          EOF
+          cd cli && uv build --wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-cli
+          path: cli/dist/*.whl
+
+  # ── 发布 ─────────────────────────────────────────────────────
+  # 用 Trusted Publishing（OIDC）：不需要在仓库里存 API token。
+  # 需先到 PyPI 项目设置里把这个仓库 + workflow 名登记为可信发布者。
+  publish:
+    needs: [wheels, cli-wheel]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write        # OIDC 必需
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: 列出将要发布的包
+        run: ls -la dist/
+
+      - name: 发到 TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: 发到 PyPI
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
