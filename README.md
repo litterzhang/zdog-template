@@ -2,6 +2,14 @@
 
 *English · [中文](README.zh-CN.md)*
 
+[![CI](https://github.com/litterzhang/zdog-template/actions/workflows/ci.yml/badge.svg)](https://github.com/litterzhang/zdog-template/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/zdog-template?label=pypi%20zdog-template)](https://pypi.org/project/zdog-template/)
+[![CLI](https://img.shields.io/pypi/v/zdog-template-cli?label=pypi%20cli)](https://pypi.org/project/zdog-template-cli/)
+[![Release](https://img.shields.io/github/v/release/litterzhang/zdog-template)](https://github.com/litterzhang/zdog-template/releases/latest)
+[![Python](https://img.shields.io/pypi/pyversions/zdog-template)](https://pypi.org/project/zdog-template/)
+[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License](https://img.shields.io/github/license/litterzhang/zdog-template)](LICENSE)
+
 **One template, both directions.** The same template that *parses* text into structured data also *formats* data back into text. Add a field-mapping layer and "text A → text B" becomes declarative.
 
 ```

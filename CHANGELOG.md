@@ -17,6 +17,18 @@ config file to be rewritten, and vice versa.
 
 ## [Unreleased]
 
+### Added
+
+- Version classifiers in package metadata, so PyPI can filter by Python
+  version and the `pyversions` badge shows the real range instead of just "3".
+
+### Changed
+
+- English README is now the default (`README.md`); the Chinese one moved to
+  `README.zh-CN.md`.
+- Quick start uses `pip` / `uv` instead of clone-and-build, now that wheels
+  are on PyPI. Building from source moved to its own section.
+
 ## [0.1.0] — 2026-08-12
 
 First release. Config version 1, ABI version 3.

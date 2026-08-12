@@ -2,6 +2,14 @@
 
 *[English](README.md) · 中文*
 
+[![CI](https://github.com/litterzhang/zdog-template/actions/workflows/ci.yml/badge.svg)](https://github.com/litterzhang/zdog-template/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/zdog-template?label=pypi%20zdog-template)](https://pypi.org/project/zdog-template/)
+[![CLI](https://img.shields.io/pypi/v/zdog-template-cli?label=pypi%20cli)](https://pypi.org/project/zdog-template-cli/)
+[![Release](https://img.shields.io/github/v/release/litterzhang/zdog-template)](https://github.com/litterzhang/zdog-template/releases/latest)
+[![Python](https://img.shields.io/pypi/pyversions/zdog-template)](https://pypi.org/project/zdog-template/)
+[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License](https://img.shields.io/github/license/litterzhang/zdog-template)](LICENSE)
+
 **一份模板，两个方向。** 同一份模板既能把文本**解析**成结构化数据，也能把数据**格式化**回文本；再加一层字段映射，"文本 A → 文本 B" 就成了声明式的。
 
 ```
