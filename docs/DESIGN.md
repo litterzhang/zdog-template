@@ -681,7 +681,7 @@ Go 用户直接 `import core/`，不走 `.so`。
 | ~~`format` 只支持 number/string~~ | ✅ **已修**：新增 `time` 类型，用 strftime 语法（`%Y-%m-%d`）+ 命名别名（`iso8601`/`unix`/`date`…）+ Go layout 逃生舱 | — |
 | **复合类型（array/dict/object）无 `format`** | 退回 JSON 序列化 | — |
 
-### 12.5 JSON 入口层（ABI v2 的 parse / format / verify）
+### 12.5 JSON 入口层（parse / format / verify）
 
 这层服务于 SDK 与 CLI，**不在热路径上**，因此有意选了简单实现。但代价要记清楚。
 
@@ -713,6 +713,8 @@ Go 用户直接 `import core/`，不走 `.so`。
 
 | 限制 | 影响 | 规避 |
 |---|---|---|
-| **仅构建 Linux x86_64** | macOS 开发机需自行 `make build` | CI 加 macos runner 原生构建 darwin/arm64 |
-| **cgo 交叉编译成本高** | 每个平台都要原生构建 | 用 GitHub Actions matrix |
+| **macOS 轮子的下限被构建机版本污染** | 标签是 `macosx_26_0_arm64`，只有 macOS 26+ 装得上；15/14/13 的用户 `pip install` 直接报"找不到匹配的发行版"。根因是 release matrix 里 macOS 那行留空标签、由 `sysconfig.get_platform()` 推断，而它报的是 **runner 的系统版本**，不是我们支持的最低版本。Linux 侧同一类问题（构建机 glibc 泄漏成兼容下限）处理对了 —— 特意用 manylinux 老容器并显式指定标签 —— macOS 漏了 | 已知修法：matrix 里显式写 `py3-none-macosx_11_0_arm64`，并给 Go 构建设 `MACOSX_DEPLOYMENT_TARGET=11.0`（Go 的 darwin/arm64 本来就以 macOS 11 为最低，所以这个标签是诚实的而非放宽断言）。当前可用 `make build` 自行构建 + `ZTPL_LIB` 指向 |
+| **只发 manylinux x86_64 与 macOS arm64 轮子** | Windows、Linux ARM、macOS x86_64 没有预编译包 | 往 `release.yml` 的 matrix 加平台；或 `make build` 后用 `ZTPL_LIB` 指向自建的库 |
+| **cgo 交叉编译成本高** | 每个平台都要原生构建，matrix 只能靠加 runner 横向扩 | 这是 cgo 的固有代价，无解；好在平台数量有限 |
 | **Go runtime 常驻宿主进程** | 额外几 MB RSS + GC 线程 | 批量 API 已把这个固定成本摊到极低 |
+| **不发 sdist** | 没有对应平台轮子的用户无法 `pip install` | 刻意为之：sdist 里没有 `.so`，装上也是坏的。明确报错好过运行时才发现缺库。见 `docs/PUBLISHING.md` |

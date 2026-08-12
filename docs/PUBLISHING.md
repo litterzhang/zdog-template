@@ -108,7 +108,31 @@ sdist 里没有 `.so`，装的人需要有 Go 工具链才能用 —— 但 `pip
 当前只构建：
 
 - `manylinux_2_28_x86_64`
-- `macosx_*_arm64`
+- `macosx_26_0_arm64` —— **注意这个下限是错的**
+
+### macOS 的下限被构建机版本污染了
+
+matrix 里 macOS 那行把标签留空、交给 `sysconfig.get_platform()` 推断，而它报的是
+**runner 的系统版本**（现在是 Tahoe），不是我们支持的最低版本。结果是只有
+macOS 26+ 装得上，15/14/13 的用户会看到"找不到匹配的发行版"。
+
+这跟 Linux 那边是同一类问题 —— 构建机的版本泄漏成兼容性下限 —— 只不过 Linux
+处理对了（manylinux 老容器 + 显式标签），macOS 漏了。
+
+修法是显式指定标签、并给 Go 构建设部署目标：
+
+```yaml
+- name: macos-arm64
+  os: macos-latest
+  tag: py3-none-macosx_11_0_arm64
+```
+
+```bash
+MACOSX_DEPLOYMENT_TARGET=11.0 go build -buildmode=c-shared ...
+```
+
+Go 的 darwin/arm64 本来就以 macOS 11 为最低支持，所以标 `11_0` 是诚实的，
+不是把断言放宽到没有依据的程度。
 
 其它平台（Windows、Linux ARM、macOS x86_64）需要往 `release.yml` 的 matrix
 里加。没有对应 wheel 的用户可以自己 `make build` 再用 `ZTPL_LIB` 指向它。
