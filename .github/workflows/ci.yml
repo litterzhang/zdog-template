@@ -21,9 +21,9 @@ jobs:
     name: test (linux/amd64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
@@ -47,7 +47,7 @@ jobs:
       - name: 构建共享库
         run: make build
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v9
         with:
           enable-cache: true
 
@@ -71,8 +71,8 @@ jobs:
     name: 性能门禁
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
@@ -100,8 +100,8 @@ jobs:
             artifact: libztpl-darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
@@ -112,7 +112,7 @@ jobs:
       - name: 冒烟 —— 库能被加载并跑通
         run: go test ./conformance/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -125,12 +125,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.mod  # 本项目零外部依赖，没有 go.sum
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v9
 
       - name: 构建 wheel（.so 打进包内）
         run: make py-build
@@ -149,7 +149,7 @@ jobs:
           print('wheel 自带的 .so 工作正常')
           "
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-wheel
           path: sdk/python/dist/*

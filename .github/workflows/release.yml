@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # manylinux 容器里没有 Go，直接装官方 tarball —— setup-go 在这种
       # 老发行版容器里未必可用。
@@ -41,13 +41,13 @@ jobs:
           tar -C /usr/local -xzf /tmp/go.tgz
           echo /usr/local/go/bin >> "$GITHUB_PATH"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: matrix.container == ''
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.mod
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v9
 
       - name: 构建 .so 并打包
         env:
@@ -70,7 +70,7 @@ jobs:
               assert t.transform_text('[x] y') == 'y/x\n'
           "
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.name }}
           path: sdk/python/dist/*.whl
@@ -80,8 +80,8 @@ jobs:
     name: wheel (ztpl-cli)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9
       - name: 构建
         # 去掉本地路径依赖：发布版要从 PyPI 解析 ztpl
         run: |
@@ -91,7 +91,7 @@ jobs:
           p.write_text(re.sub(r"\n\[tool\.uv\.sources\][^\[]*", "\n", p.read_text()))
           EOF
           cd cli && uv build --wheel
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-cli
           path: cli/dist/*.whl
@@ -106,7 +106,7 @@ jobs:
     permissions:
       id-token: write        # OIDC 必需
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: wheel-*
           path: dist
