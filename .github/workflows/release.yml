@@ -72,7 +72,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: wheel-${{ matrix.name }}
+          name: sdk-wheel-${{ matrix.name }}
           path: sdk/python/dist/*.whl
 
   # ── CLI 是纯 Python，一个 wheel 通吃 ──────────────────────────
@@ -93,26 +93,49 @@ jobs:
           cd cli && uv build --wheel
       - uses: actions/upload-artifact@v7
         with:
-          name: wheel-cli
+          name: cli-wheel
           path: cli/dist/*.whl
 
   # ── 发布到 PyPI ──────────────────────────────────────────────
   # 用 Trusted Publishing（OIDC）：不需要在仓库里存 API token。
+  #
+  # 两个包各用**独立的 environment**，而不是共用一个。PyPI 的可信发布者是按
+  # (owner, repo, workflow, environment) 匹配的 —— 共用一个环境意味着任何一个
+  # 发布 job 都能往两个项目推包。分开之后每个 job 的 OIDC 身份只对自己那个包
+  # 有效，CLI 的构建被污染也发不了 SDK。也便于分别设审批。
+  #
   # 前置条件见 docs/PUBLISHING.md。
-  publish:
-    needs: [wheels, cli-wheel]
+  publish-sdk:
+    name: 发布 zdog-template
+    needs: wheels
     runs-on: ubuntu-latest
-    environment: release
+    environment: release-sdk
     permissions:
       id-token: write        # OIDC 必需
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: wheel-*
+          pattern: sdk-wheel-*
           path: dist
           merge-multiple: true
-
       - name: 列出将要发布的包
         run: ls -la dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
 
+  # CLI 依赖 SDK，所以等 SDK 发完再发 —— 否则用户装 CLI 时依赖还解析不到。
+  # SDK 发布失败时 CLI 也不该发：没有 SDK 的 CLI 是废的。
+  publish-cli:
+    name: 发布 zdog-template-cli
+    needs: [cli-wheel, publish-sdk]
+    runs-on: ubuntu-latest
+    environment: release-cli
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli-wheel
+          path: dist
+      - name: 列出将要发布的包
+        run: ls -la dist/
       - uses: pypa/gh-action-pypi-publish@release/v1

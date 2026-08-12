@@ -61,14 +61,16 @@ cli-sync: ## 同步 CLI 依赖
 cli-test: build ## CLI 测试
 	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) run pytest
 
-gh-setup: ## 建 release environment 并限制只能从 v* tag 部署
+gh-setup: ## 建两个发布环境并限制只能从 v* tag 部署
 	@repo=$$(gh repo view --json nameWithOwner -q .nameWithOwner); \
-	gh api -X PUT "repos/$$repo/environments/release" >/dev/null; \
-	gh api -X PUT "repos/$$repo/environments/release" --input - >/dev/null <<< \
-	  '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'; \
-	gh api -X POST "repos/$$repo/environments/release/deployment-branch-policies" \
-	  -f name='v*' -f type='tag' >/dev/null 2>&1 || true; \
-	echo "release environment 就绪（只允许 v* tag 部署）"
+	for env in release-sdk release-cli; do \
+	  gh api -X PUT "repos/$$repo/environments/$$env" >/dev/null; \
+	  gh api -X PUT "repos/$$repo/environments/$$env" --input - >/dev/null <<< \
+	    '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'; \
+	  gh api -X POST "repos/$$repo/environments/$$env/deployment-branch-policies" \
+	    -f name='v*' -f type='tag' >/dev/null 2>&1 || true; \
+	  echo "  $$env 就绪（只允许 v* tag 部署）"; \
+	done
 
 demo: build ## 跑 CLI 自带的完整例子
 	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) run ztpl demo
