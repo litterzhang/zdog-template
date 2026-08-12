@@ -293,3 +293,92 @@ def test_parse_preserves_island_verbatim():
     with Template("[${ts}] ${json|name=p}") as t:
         out = t.parse(f"[T1] {raw}".encode()).text()
     assert raw in out, f"岛应原样嵌入，实际: {out}"
+
+
+# —— 流式：内存与输入总大小无关 ——
+
+import io  # noqa: E402
+
+
+def _bio(lines: list[bytes]) -> io.BytesIO:
+    return io.BytesIO(b"\n".join(lines))
+
+
+def test_stream_matches_batch():
+    """流式与全量必须给出完全相同的结果。"""
+    lines = [b"[T%d] err%d" % (i, i) for i in range(500)]
+    with Template("[${ts}] ${lv}", target="${lv}/${ts}") as t:
+        batch = t.transform(b"\n".join(lines))
+        out = io.BytesIO()
+        stream = t.transform_stream(_bio(lines), out, chunk_size=64)  # 极小的块
+        assert out.getvalue() == batch.output
+        assert (stream.ok, stream.total) == (batch.ok, batch.total)
+
+
+def test_stream_never_splits_a_line():
+    """块边界必须落在行边界上，否则会把一行切成两半。"""
+    with Template("[${ts}] ${lv}", target="${lv}") as t:
+        lines = [b"[T%d] value%d" % (i, i) for i in range(300)]
+        for chunk in (8, 13, 64, 1000):   # 各种与行长不对齐的块
+            out = io.BytesIO()
+            res = t.transform_stream(_bio(lines), out, chunk_size=chunk)
+            assert res.ok == 300, f"chunk={chunk}: 只匹配了 {res.ok} 行"
+            assert out.getvalue().split(b"\n")[0] == b"value0"
+
+
+def test_stream_line_numbers_are_global():
+    """分块之后，错误行号必须是整个输入里的序号，不是块内序号。"""
+    lines = [
+        b'[x] {"bad":}' if i in (1, 400, 900) else b'[x] {"ok":%d}' % i
+        for i in range(1, 1001)
+    ]
+    with Template('[${a}] ${json|name=p}') as t:
+        res = t.parse_stream(_bio(lines), io.BytesIO(), chunk_size=128)
+        assert res.failed == 3
+        got = sorted(int(e.split()[1].rstrip(":")) for e in res.errors)
+        assert got == [1, 400, 900], f"行号 = {got}"
+
+
+def test_stream_handles_no_trailing_newline():
+    with Template("[${a}]", target="${a}") as t:
+        out = io.BytesIO()
+        res = t.transform_stream(io.BytesIO(b"[x]\n[y]"), out, chunk_size=4)
+        assert res.ok == 2
+        assert out.getvalue() == b"x\ny\n"
+
+
+def test_stream_empty_input():
+    with Template("[${a}]", target="${a}") as t:
+        out = io.BytesIO()
+        res = t.transform_stream(io.BytesIO(b""), out)
+        assert (res.ok, res.total) == (0, 0)
+        assert out.getvalue() == b""
+
+
+def test_stream_rejects_absurdly_long_line():
+    """没有换行的超长输入多半是二进制文件，不该把内存吃光。"""
+    with Template("[${a}]", target="${a}") as t:
+        with pytest.raises(ValueError, match="without a newline"):
+            t.transform_stream(io.BytesIO(b"x" * 5000), io.BytesIO(),
+                               chunk_size=64, max_line=1024)
+
+
+def test_verify_stream_caps_problems_but_counts_all():
+    lines = [b"[T%d] a b c" % i for i in range(50)]  # 全部歧义
+    with Template("[${ts}] ${lv} ${msg}") as t:
+        rep = t.verify_stream(_bio(lines), limit=5, chunk_size=128)
+        assert rep.total == 50
+        assert rep.bad == 50            # 计数不受 limit 影响
+        assert len(rep.problems) == 5   # 但只保留 5 条详情
+
+
+def test_format_stream_round_trips():
+    tmpl = "[${ts}] ${lv}"
+    with Template(tmpl, target="${lv}|${ts}") as t:
+        src = b"\n".join(b"[T%d] e%d" % (i, i) for i in range(200))
+        mid = io.BytesIO()
+        t.parse_stream(io.BytesIO(src), mid, chunk_size=96)
+        mid.seek(0)
+        out = io.BytesIO()
+        t.format_stream(mid, out, chunk_size=96)
+        assert out.getvalue() == t.transform(src).output

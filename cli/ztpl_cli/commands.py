@@ -6,7 +6,7 @@ import sys
 from ztpl import Template
 
 from . import term
-from .sources import load_config, open_template, read_input
+from .sources import load_config, open_input, open_template
 
 # Examples used by `ztpl demo`.
 # NAIVE is deliberately ambiguous: ${lv} is unconstrained, so it can be either
@@ -25,27 +25,38 @@ DEMO_INPUT = (
 def cmd_parse(args) -> int:
     """Source text -> structured bindings."""
     cfg = load_config(args)
-    data = read_input(args)
-    with open_template(cfg) as tpl:
-        res = tpl.parse(data)
-
-    if args.ndjson:
-        sys.stdout.buffer.write(res.output)
-    else:
-        for rec in res.records():
-            print(term.pretty_json(rec))
-
+    with open_template(cfg) as tpl, open_input(args) as src:
+        if args.ndjson:
+            # 紧凑模式直接把 NDJSON 流写出去，全程不物化
+            res = tpl.parse_stream(src, sys.stdout.buffer, chunk_size=args.chunk)
+        else:
+            res = tpl.parse_stream(src, _PrettyJSONWriter(), chunk_size=args.chunk)
     _report(res, "parsed")
     return 0 if res.matched else 1
+
+
+class _PrettyJSONWriter:
+    """把流式产出的 NDJSON 逐条美化打印。
+
+    只在换行处切分，因此不会攒下整份输出 —— 流式的意义就在这。
+    """
+
+    def __init__(self):
+        self._carry = b""
+
+    def write(self, data: bytes) -> None:
+        buf = self._carry + data
+        *lines, self._carry = buf.split(b"\n")
+        for line in lines:
+            if line.strip():
+                print(term.pretty_json(json.loads(line)))
 
 
 def cmd_convert(args) -> int:
     """Source text -> target text (the full pipeline)."""
     cfg = load_config(args)
-    data = read_input(args)
-    with open_template(cfg, need_target=True) as tpl:
-        res = tpl.transform(data)
-    sys.stdout.buffer.write(res.output)
+    with open_template(cfg, need_target=True) as tpl, open_input(args) as src:
+        res = tpl.transform_stream(src, sys.stdout.buffer, chunk_size=args.chunk)
     _report(res, "converted")
     return 0 if res.matched else 1
 
@@ -53,10 +64,8 @@ def cmd_convert(args) -> int:
 def cmd_format(args) -> int:
     """NDJSON bindings -> target text."""
     cfg = load_config(args)
-    data = read_input(args)
-    with open_template(cfg, need_target=True) as tpl:
-        res = tpl.format(data)
-    sys.stdout.buffer.write(res.output)
+    with open_template(cfg, need_target=True) as tpl, open_input(args) as src:
+        res = tpl.format_stream(src, sys.stdout.buffer, chunk_size=args.chunk)
     _report(res, "rendered")
     return 0 if res.rendered else 1
 
@@ -64,9 +73,8 @@ def cmd_format(args) -> int:
 def cmd_verify(args) -> int:
     """Check round-trip law A and ambiguity, line by line."""
     cfg = load_config(args)
-    data = read_input(args)
-    with open_template(cfg) as tpl:
-        rep = tpl.verify(data)
+    with open_template(cfg) as tpl, open_input(args) as src:
+        rep = tpl.verify_stream(src, limit=args.limit, chunk_size=args.chunk)
 
     if rep.ok:
         print(term.green(f"✓ all {rep.total} line(s) passed"))
@@ -80,9 +88,10 @@ def cmd_verify(args) -> int:
         for p in item.get("problems", []):
             print(f"    {term.yellow('•')} {p}")
         print()
-    if len(rep.problems) > args.limit:
-        print(term.dim(
-            f"  …and {len(rep.problems) - args.limit} more; use --limit to show more"))
+    # 用真实失败计数而不是 len(problems) —— 流式模式下后者已被 limit 截断
+    shown = min(len(rep.problems), args.limit)
+    if rep.bad > shown:
+        print(term.dim(f"  …and {rep.bad - shown} more; use --limit to show more"))
     return 1
 
 

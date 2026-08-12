@@ -58,6 +58,9 @@ def _add_input_args(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("input")
     g.add_argument("-i", "--input", type=_path, metavar="FILE", help="input file; reads stdin by default")
     g.add_argument("--text", metavar="STR", help="inline text (handy for quick tries)")
+    g.add_argument("--chunk", type=int, default=1 << 20, metavar="BYTES",
+                   help="streaming chunk size (default 1 MiB); memory stays "
+                        "bounded by this, not by input size")
 
 
 def _path(s: str):

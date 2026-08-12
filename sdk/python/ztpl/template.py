@@ -4,6 +4,7 @@ import ctypes
 import json
 from dataclasses import dataclass, field
 
+from .streaming import DEFAULT_CHUNK, DEFAULT_MAX_LINE, StreamTotals, iter_line_aligned
 from ._lib import (
     CONFIG_VERSION,
     E_HANDLE,
@@ -81,6 +82,11 @@ class Template:
 
     一次编译、长期持有。句柄在 Go 侧无全局可变状态，可多线程并发调用；
     但同一个实例的输出缓冲不是线程安全的，多线程请各持一个实例。
+
+    .. note::
+       输出缓冲按需增长且**不回收**。处理过一次超大输入后，实例会一直占着
+       那块内存 —— 用 :meth:`transform_stream` 之类的流式接口即可避免
+       （缓冲只按 chunk 大小增长），或者用完 ``close()`` 重建。
 
     ``target`` 可省略 —— 只做 :meth:`parse` / :meth:`verify` / :meth:`inspect`
     时不需要目标模板。
@@ -196,6 +202,62 @@ class Template:
 
     def verify_text(self, text: str, encoding: str = "utf-8") -> VerifyReport:
         return self.verify(text.encode(encoding))
+
+    # —— 流式：内存有界，与输入总大小无关 ——
+
+    def transform_stream(self, src, dst, **kw) -> Result:
+        """源文本 -> 目标文本，边读边写。"""
+        self._need_target("transform")
+        return self._stream(self._lib.ZtplTransform, src, dst, **kw)
+
+    def parse_stream(self, src, dst, **kw) -> Result:
+        """源文本 -> NDJSON 绑定，边读边写。"""
+        return self._stream(self._lib.ZtplParse, src, dst, **kw)
+
+    def format_stream(self, src, dst, **kw) -> Result:
+        """NDJSON 绑定 -> 目标文本，边读边写。"""
+        self._need_target("format")
+        return self._stream(self._lib.ZtplFormat, src, dst, **kw)
+
+    def verify_stream(self, src, *, limit: int = 100, **kw) -> VerifyReport:
+        """逐行校验，只保留前 limit 条问题。"""
+        problems: list = []
+        totals = StreamTotals()
+
+        def collect(res, offset):
+            for rec in res.records():
+                if rec.get("ok", True) or len(problems) >= limit:
+                    continue
+                rec["line"] = rec.get("line", 0) + offset
+                problems.append(rec)
+
+        res = self._stream(self._lib.ZtplVerify, src, None, _on_chunk=collect,
+                           _totals=totals, **kw)
+        return VerifyReport(total=res.total, bad=res.failed, problems=problems)
+
+    def _stream(self, fn, src, dst, *, chunk_size: int = DEFAULT_CHUNK,
+                max_line: int = DEFAULT_MAX_LINE, error_cap: int = 100,
+                _on_chunk=None, _totals: StreamTotals = None) -> Result:
+        """按行边界分块处理。
+
+        内存峰值 ≈ chunk_size + 最长一行，**与输入总大小无关**。
+        分块之后每块的行号是块内序号，这里换算成全局行号。
+        """
+        if self._closed:
+            raise ZtplError("Template is closed")
+        totals = _totals or StreamTotals()
+
+        for chunk in iter_line_aligned(src, chunk_size, max_line):
+            offset = totals.total
+            res = self._batch(fn, chunk)
+            totals.absorb(res, offset, error_cap)
+            if _on_chunk is not None:
+                _on_chunk(res, offset)
+            if dst is not None and res.output:
+                dst.write(res.output)
+
+        return Result(output=b"", ok=totals.ok, total=totals.total,
+                      failed=totals.failed, errors=tuple(totals.errors))
 
     # —— 内省 ——
 
