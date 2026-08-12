@@ -6,10 +6,20 @@
 详见 docs/DESIGN.md §7 否决记录 2。
 """
 
-from .template import Template, ZtplError, ZtplCompileError, abi_version, lib_path
+from .template import (
+    Result,
+    Template,
+    VerifyReport,
+    ZtplCompileError,
+    ZtplError,
+    abi_version,
+    lib_path,
+)
 
 __all__ = [
     "Template",
+    "Result",
+    "VerifyReport",
     "ZtplError",
     "ZtplCompileError",
     "abi_version",

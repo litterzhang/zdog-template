@@ -28,7 +28,8 @@ const ConfigVersion = 1
 type Config struct {
 	Version int    `json:"version"`
 	Source  string `json:"source"`
-	Target  string `json:"target"`
+	// Target 可省略。只做 parse / verify / inspect 时不需要目标模板。
+	Target string `json:"target,omitempty"`
 	// Mapping 是 目标字段 -> 源字段（或映射表达式）。缺省时按同名直通。
 	Mapping map[string]string `json:"mapping,omitempty"`
 	// Shape 是 目标字段 -> shape 定义，为**无 Raw 出处**的字段提供序列化规则。
@@ -62,18 +63,25 @@ func Compile(cfg *Config) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline: unsupported config version %d (want %d)",
 			cfg.Version, ConfigVersion)
 	}
+	if cfg.Source == "" {
+		return nil, fmt.Errorf("pipeline: source template 不能为空")
+	}
 	src, err := engine.New(cfg.Source)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: source template: %w", err)
 	}
-	tgt, err := engine.New(cfg.Target)
-	if err != nil {
-		return nil, fmt.Errorf("pipeline: target template: %w", err)
-	}
-
 	codecs, err := compileCodecs(cfg.Shape)
 	if err != nil {
 		return nil, err
+	}
+
+	// target 可省略：只做 parse / verify / inspect 时不需要它。
+	if cfg.Target == "" {
+		return &Pipeline{src: src}, nil
+	}
+	tgt, err := engine.New(cfg.Target)
+	if err != nil {
+		return nil, fmt.Errorf("pipeline: target template: %w", err)
 	}
 	r, err := buildRoute(src.Plan(), tgt.Plan(), cfg.Mapping, codecs, "")
 	if err != nil {
@@ -81,6 +89,9 @@ func Compile(cfg *Config) (*Pipeline, error) {
 	}
 	return &Pipeline{src: src, tgt: tgt, route: r}, nil
 }
+
+// HasTarget 报告该流水线是否配置了目标模板。
+func (p *Pipeline) HasTarget() bool { return p.tgt != nil }
 
 // Source 返回源模板引擎。
 func (p *Pipeline) Source() *engine.Engine { return p.src }
@@ -100,14 +111,18 @@ type Scratch struct {
 
 // NewScratch 为该流水线分配工作区。每个 goroutine 应持有自己的实例。
 func (p *Pipeline) NewScratch() *Scratch {
-	return &Scratch{
-		res:  p.src.Plan().NewResult(),
-		data: p.tgt.Plan().NewData(),
+	s := &Scratch{res: p.src.Plan().NewResult()}
+	if p.tgt != nil {
+		s.data = p.tgt.Plan().NewData()
 	}
+	return s
 }
 
 // TransformLine 转换单行，结果追加到 dst。不匹配时返回 ok=false。
 func (p *Pipeline) TransformLine(dst, line []byte, s *Scratch) ([]byte, bool) {
+	if p.tgt == nil {
+		return dst, false
+	}
 	if !p.src.ParseInto(line, s.res) {
 		return dst, false
 	}

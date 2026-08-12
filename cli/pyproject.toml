@@ -1,0 +1,40 @@
+[project]
+name = "ztpl-cli"
+version = "0.1.0"
+description = "Z-Template 命令行 —— 快速体验双向模板：parse / convert / verify / inspect"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Huge Zhang" }]
+keywords = ["template", "cli", "text-transformation", "log-parsing"]
+
+# CLI 完全建立在 Python SDK 之上 —— 它不碰 ctypes、不碰 .so，
+# 只用 ztpl 的公开 API。这保证 SDK 的能力面足够完整：
+# CLI 做不到的事，就说明 SDK 缺东西。
+dependencies = ["ztpl"]
+
+[project.scripts]
+ztpl = "ztpl_cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/huge-zhang/zdog-template"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ztpl_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+ztpl = { path = "../sdk/python", editable = true }

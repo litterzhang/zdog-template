@@ -24,8 +24,11 @@ import (
 	"github.com/huge-zhang/zdog-template/core/pipeline"
 )
 
-// AbiVersion 是 ABI 版本。宿主 SDK 必须在加载时校验。
-const AbiVersion = 1
+// AbiVersion 是 ABI 版本 —— C 函数签名的契约，加函数就要升。
+// 它与 pipeline.ConfigVersion（配置 JSON 的 schema 版本）是**不同**的契约：
+// 加一个 ABI 函数不影响配置格式，改配置格式也不一定动 ABI。混在一起会让
+// 宿主 SDK 被迫为无关的变更升级。
+const AbiVersion = 2
 
 // 返回码。n >= 0 表示写入的字节数。
 const (
@@ -172,6 +175,94 @@ func ZtplLastError(id C.int64_t, outPtr *C.uint8_t, outCap C.int32_t) C.int32_t 
 		return C.int32_t(-len(msg))
 	}
 	return C.int32_t(copy(dst, msg))
+}
+
+// runOp 是四个 NDJSON 类入口的公共骨架：取句柄、借工作区、写回缓冲。
+// 保持它们与 ZtplTransform 完全相同的调用约定（grow-retry + stats 三元组），
+// 宿主 SDK 因此可以共用同一套包装代码。
+func runOp(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
+	out *C.uint8_t, outCap C.int32_t, statsPtr *C.int32_t,
+	fn func(h *handle, w *work, in []byte) (res []byte, a, b int)) C.int32_t {
+
+	h := lookup(int64(id))
+	if h == nil || h.pl == nil {
+		return C.int32_t(errHandle)
+	}
+	stats := is32(statsPtr, statsLen)
+	if stats == nil {
+		return C.int32_t(errArg)
+	}
+	w := h.get()
+	defer h.put(w)
+
+	res, a, b := fn(h, w, bs(in, inLen))
+	w.buf = res
+
+	stats[0], stats[1], stats[2] = int32(a), int32(b), int32(len(res))
+	if len(res) > int(outCap) {
+		return C.int32_t(errShortBuffer)
+	}
+	if len(res) > 0 {
+		copy(bs(out, outCap), res)
+	}
+	return C.int32_t(len(res))
+}
+
+// ZtplParse 把每行解析成一个 JSON 对象，按 NDJSON 输出。
+// stats = [matched, total, needed]。
+//
+//export ZtplParse
+func ZtplParse(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
+	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
+	return runOp(id, in, inLen, out, outCap, stats,
+		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+			return h.pl.ParseJSON(w.buf[:0], b, w.scratch)
+		})
+}
+
+// ZtplFormat 把 NDJSON 的每一行按目标模板渲染成文本。
+// stats = [rendered, total, needed]。
+//
+//export ZtplFormat
+func ZtplFormat(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
+	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
+	return runOp(id, in, inLen, out, outCap, stats,
+		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+			return h.pl.FormatJSON(w.buf[:0], b, w.scratch)
+		})
+}
+
+// ZtplVerify 逐行校验定律 A 与歧义，输出 NDJSON 报告。
+// stats = [bad, total, needed]。
+//
+//export ZtplVerify
+func ZtplVerify(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
+	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
+	return runOp(id, in, inLen, out, outCap, stats,
+		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+			return h.pl.VerifyJSON(w.buf[:0], b)
+		})
+}
+
+// ZtplInspect 输出模板结构的 JSON 描述。
+// 缓冲不足时返回负的所需长度。
+//
+//export ZtplInspect
+func ZtplInspect(id C.int64_t, out *C.uint8_t, outCap C.int32_t) C.int32_t {
+	h := lookup(int64(id))
+	if h == nil || h.pl == nil {
+		return C.int32_t(errHandle)
+	}
+	b, err := h.pl.Inspect()
+	if err != nil {
+		h.err = err.Error()
+		return C.int32_t(errConfig)
+	}
+	dst := bs(out, outCap)
+	if len(b) > len(dst) {
+		return C.int32_t(-len(b))
+	}
+	return C.int32_t(copy(dst, b))
 }
 
 //export ZtplRelease

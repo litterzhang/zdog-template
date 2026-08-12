@@ -10,7 +10,12 @@ import os
 import sys
 from pathlib import Path
 
-ABI_VERSION = 1
+# 两个版本号是**不同**的契约，必须分开：
+#   ABI_VERSION    —— C 函数签名的契约，加函数就要升
+#   CONFIG_VERSION —— 配置 JSON 的 schema，只有不兼容变更才升
+# （target 由必填变可选属于向后兼容，因此 CONFIG_VERSION 保持 1）
+ABI_VERSION = 2
+CONFIG_VERSION = 1
 
 # 返回码，与 cshared/abi.go 保持一致
 E_SHORT_BUFFER = -1
@@ -59,14 +64,21 @@ def lib_path() -> Path:
     )
 
 
+# 四个批量入口的签名完全相同 —— 这是刻意的：宿主 SDK 因此能共用一套包装。
+_BATCH_SIG = (
+    ctypes.c_int32,
+    [ctypes.c_int64, ctypes.c_char_p, ctypes.c_int32,
+     ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int32)],
+)
+
 _SIGNATURES = {
     "ZtplAbiVersion": (ctypes.c_int32, []),
     "ZtplCompile": (ctypes.c_int64, [ctypes.c_char_p, ctypes.c_int32]),
-    "ZtplTransform": (
-        ctypes.c_int32,
-        [ctypes.c_int64, ctypes.c_char_p, ctypes.c_int32,
-         ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int32)],
-    ),
+    "ZtplTransform": _BATCH_SIG,
+    "ZtplParse": _BATCH_SIG,
+    "ZtplFormat": _BATCH_SIG,
+    "ZtplVerify": _BATCH_SIG,
+    "ZtplInspect": (ctypes.c_int32, [ctypes.c_int64, ctypes.c_char_p, ctypes.c_int32]),
     "ZtplLastError": (ctypes.c_int32, [ctypes.c_int64, ctypes.c_char_p, ctypes.c_int32]),
     "ZtplRelease": (None, [ctypes.c_int64]),
 }

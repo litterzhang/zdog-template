@@ -24,9 +24,6 @@ dependencies = []
 Homepage = "https://github.com/huge-zhang/zdog-template"
 Design = "https://github.com/huge-zhang/zdog-template/blob/main/docs/DESIGN.md"
 
-[project.scripts]
-ztpl = "ztpl.cli:main"
-
 [dependency-groups]
 dev = [
     "pytest>=8.0",

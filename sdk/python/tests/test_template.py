@@ -8,7 +8,7 @@ from ztpl import Template, ZtplCompileError, ZtplError, abi_version, lib_path
 
 
 def test_abi_version():
-    assert abi_version() == 1
+    assert abi_version() == 2
 
 
 def test_lib_path_exists():
@@ -133,3 +133,117 @@ def test_ctypes_string_at_is_used(monkeypatch):
     with Template(source="[${a}]", target="${a}") as t:
         t.transform(b"[x]")
     assert calls, "transform 应当用 ctypes.string_at 精确拷贝 n 字节"
+
+
+# —— ABI v2 新增的能力面 ——
+
+LOG = "[T1] ERROR disk full payload={\"host\":\"web-1\",\"pct\":95}"
+
+
+def test_parse_returns_bindings():
+    with Template("[${ts}] ${lv} ${msg} payload=${json|name=p}") as t:
+        recs = t.parse_records(LOG)
+        assert len(recs) == 1
+        r = recs[0]
+        assert r["ts"] == "T1"
+        assert r["lv"] == "ERROR"
+        assert r["msg"] == "disk full"
+        # JSON 岛在 parse 时解码成真正的对象，而不是字符串
+        assert r["p"] == {"host": "web-1", "pct": 95}
+
+
+def test_parse_without_target():
+    """只做 parse 时不需要目标模板。"""
+    with Template("[${a}] ${b}") as t:
+        assert not t.has_target
+        assert t.parse_records("[x] y") == [{"a": "x", "b": "y"}]
+        with pytest.raises(ZtplError, match="需要目标模板"):
+            t.transform(b"[x] y")
+        with pytest.raises(ZtplError, match="需要目标模板"):
+            t.format(b"{}")
+
+
+def test_parse_each_block():
+    with Template("items=${each|name=xs,sep=;}${id}:${n}${end}") as t:
+        recs = t.parse_records("items=a:1;b:2")
+        assert recs[0]["xs"] == [{"id": "a", "n": "1"}, {"id": "b", "n": "2"}]
+
+
+def test_parse_skips_non_matching():
+    with Template("[${a}]") as t:
+        res = t.parse(b"[x]\nnope\n[y]")
+        assert res.matched == 2
+        assert res.total == 3
+        assert res.skipped == 1
+
+
+def test_format_from_records():
+    with Template("[${a}] ${b}", target="${b}/${a}") as t:
+        out = t.format_records([{"a": "x", "b": "y"}, {"a": "p", "b": "q"}])
+        assert out == "y/x\nq/p\n"   # 目标是 ${b}/${a}
+
+
+def test_parse_format_round_trip():
+    """定律 A 的 SDK 级体现：parse 出来再 format 回去应还原原文。"""
+    tmpl = "[${ts}] ${lv} ${msg}"
+    with Template(tmpl, target=tmpl) as t:
+        src = "[T1] ERROR disk full"
+        assert t.format_records(t.parse_records(src)).rstrip("\n") == src
+
+
+def test_verify_ok():
+    with Template("[${ts}] ${lv}") as t:
+        rep = t.verify_text("[a] b\n[c] d")
+        assert rep.ok
+        assert rep.total == 2
+        assert rep.bad == 0
+        assert "全部通过" in str(rep)
+
+
+def test_verify_detects_ambiguity():
+    with Template("${a}.${b}!") as t:
+        rep = t.verify_text("x.y.z!")
+        assert not rep.ok
+        assert rep.bad == 1
+        assert any("歧义" in p for prob in rep.problems for p in prob["problems"])
+
+
+def test_verify_detects_no_match():
+    with Template("[${a}]") as t:
+        rep = t.verify_text("nope")
+        assert not rep.ok
+        assert any("不匹配" in p for prob in rep.problems for p in prob["problems"])
+
+
+def test_inspect_reports_structure():
+    with Template("[${ts}] ${lv} payload=${json|name=p}",
+                  target="${ts}") as t:
+        info = t.inspect()
+        assert info["source"]["tier"] == "T2/island"
+        # 末尾是岛而非 OpRest，"必须吃满输入"的终检本身就是可失败点
+        assert info["source"]["backtrack"] is True
+        names = [f["name"] for f in info["source"]["fields"]]
+        assert names == ["ts", "lv", "p"]
+        kinds = {f["name"]: f["kind"] for f in info["source"]["fields"]}
+        assert kinds["p"] == "json-island"
+        assert kinds["ts"] == "hole"
+        assert "target" in info
+
+
+def test_inspect_reports_blocks():
+    with Template("${each|name=xs,sep=;}${id}:${n}${end}") as t:
+        info = t.inspect()
+        blocks = info["source"]["blocks"]
+        assert blocks[0]["name"] == "xs"
+        assert blocks[0]["sep"] == ";"
+        assert [f["name"] for f in blocks[0]["fields"]] == ["id", "n"]
+
+
+def test_inspect_reports_backtrack():
+    with Template(r"${a}.${re|name=n,expr=\d+}") as t:
+        assert t.inspect()["source"]["backtrack"] is True
+
+
+def test_inspect_without_target():
+    with Template("[${a}]") as t:
+        assert "target" not in t.inspect()

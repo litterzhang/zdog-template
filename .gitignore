@@ -10,6 +10,7 @@ driver
 # python
 .venv/
 .pytest_cache/
+.ruff_cache/
 sdk/python/ztpl/libztpl.*
 __pycache__/
 *.py[cod]

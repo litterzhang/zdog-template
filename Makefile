@@ -2,15 +2,16 @@ GO      ?= go
 PYTHON  ?= python3
 UV      ?= uv
 PYDIR   := sdk/python
+CLIDIR  := cli
 SOEXT   := so
 ifeq ($(shell uname -s),Darwin)
 SOEXT := dylib
 endif
 LIB := cshared/libztpl.$(SOEXT)
 
-.PHONY: all build test bench conformance fmt vet clean help py-sync py-test py-build
+.PHONY: all build test bench conformance fmt vet clean help py-sync py-test py-build cli-sync cli-test demo
 
-all: build test conformance ## 构建 + 测试 + 一致性用例
+all: build test conformance cli-test ## 构建 + 全部测试 + 一致性用例
 
 build: $(LIB) ## 构建 C 共享库
 
@@ -42,6 +43,15 @@ py-build: build ## 构建 Python wheel（先把 .so 拷进包内）
 	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztpl/
 	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build
 
+cli-sync: ## 同步 CLI 依赖
+	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) sync
+
+cli-test: build ## CLI 测试
+	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) run pytest
+
+demo: build ## 跑 CLI 自带的完整例子
+	@cd $(CLIDIR) && UV_LINK_MODE=copy $(UV) run ztpl demo
+
 # 迭代数要够大：200x 在这类 ns 级基准上主要测的是预热噪声。
 bench: build ## 性能门禁
 	@echo "--- Go core (parse) ---"
@@ -56,7 +66,7 @@ bench: build ## 性能门禁
 clean: ## 清理构建产物
 	rm -f cshared/libztpl.so cshared/libztpl.dylib cshared/libztpl.h
 	rm -f $(PYDIR)/ztpl/libztpl.* 
-	rm -rf $(PYDIR)/dist $(PYDIR)/.pytest_cache
+	rm -rf $(PYDIR)/dist $(PYDIR)/.pytest_cache $(CLIDIR)/dist $(CLIDIR)/.pytest_cache
 	find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
 help: ## 显示可用目标
