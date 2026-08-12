@@ -555,7 +555,7 @@ Go 用户直接 `import core/`，不走 `.so`。
 | ~~`parse` 急切解码所有岛~~ | ✅ **已修**：岛原文原样嵌入，5047 → 796 ns/行（6.3 倍） | — |
 | ~~错误行被静默跳过~~ | ✅ **已修**：`stats[3]` 给出 failed 计数，原因经 `LastError` 回传 | — |
 | **`parse` 仍比 `transform` 慢 4.6 倍** | 796 vs 174 ns/行。大头是 `json.Valid`（~450 ns）：非 strict 的岛在 Scan 只查了括号配对，直接拼进输出会毁掉整行 NDJSON | 只要最终文本就用 `transform`；`parse` 面向调试与中小批量 |
-| **`format` 不复用 Scratch** | 每行 `NewContext()`，分配 4 个切片 | 非热路径，暂不优化 |
+| **`format` 整条路径是 map 驱动的** | **1997 ns/行（2 字段）→ 4335 ns（8 字段），比 `transform` 的 58 ns 慢 33 倍**。每行都要 `json.NewDecoder` + 解码进 `map[string]any` + 按名做哈希查找写进 context；成本随字段数线性增长（~390 ns/字段）。`NewContext` 只是其中一小块固定开销 | 逐行喂 JSON 本来就不是高吞吐场景；真要快就用 `transform`（源文本直接进、目标文本直接出，全程零拷贝） |
 | **只回报前 10 条错误原因** | 计数不受限，但原因最多 `MaxReportedErrors` 条 | 逐行诊断用 `verify` |
 
 ### 12.6 SDK 与 CLI
