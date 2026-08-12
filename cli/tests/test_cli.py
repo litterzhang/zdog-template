@@ -24,6 +24,41 @@ def test_demo_runs(capsys):
     assert "ERROR host=web-1" in out
 
 
+def test_demo_redact(capsys):
+    """The redaction demo has to actually demonstrate its own claims.
+
+    Each assertion below pins one of them, because a demo that quietly stops
+    showing the contrast is worse than no demo — it still reads convincingly.
+    """
+    code, out, _ = run(capsys, "demo", "redact")
+    assert code == 0
+
+    # The regex misfires in both directions on the same line: it clobbers the
+    # 11-digit order id and misses the 10-digit card.
+    assert "order=***********" in out
+    assert "card=6225880137" in out
+
+    # Field-scoped redaction gets both right and leaves order= intact.
+    assert "phone=*******5678" in out
+    assert "card=**********" in out
+    assert "order=20260812001 amt=42.50" in out
+
+    # The honest caveat: Law A holding does not prove correct delimitation.
+    assert "13812345678 card=6225880137" in out
+
+    # Skipped lines are silent data loss, so the count must be shown.
+    assert "skipped 1" in out
+
+    # And the machine-checked guarantee.
+    assert "unchanged" in out
+    assert "redacted" in out
+
+
+def test_demo_rejects_unknown_scenario(capsys):
+    with pytest.raises(SystemExit):
+        run(capsys, "demo", "nosuch")
+
+
 def test_parse(capsys):
     code, out, err = run(capsys, "parse", "-s", SRC, "--text", LOG)
     assert code == 0

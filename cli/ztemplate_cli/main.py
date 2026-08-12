@@ -27,6 +27,7 @@ examples:
 
   # run a self-contained example, no arguments needed
   ztpl demo
+  ztpl demo redact               why field-scoped redaction beats regex
 
 template syntax:
   ${name}                        hole, delimited by the literal that follows (fastest)
@@ -117,7 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
     si.set_defaults(func=commands.cmd_inspect)
 
     sd = sub.add_parser("demo", help="run a self-contained example",
-                        description="No input needed; walks through parse / verify / convert.")
+                        description="No input needed. 'tour' walks through "
+                                    "parse / verify / convert; 'redact' shows "
+                                    "why field-scoped redaction beats regex.")
+    sd.add_argument("scenario", nargs="?", default="tour",
+                    choices=["tour", "redact"],
+                    help="which example to run (default: tour)")
     sd.set_defaults(func=commands.cmd_demo)
 
     return p

@@ -351,7 +351,7 @@ func (p *parser) parsePrimary() (Expr, error) {
 	case tkNumber:
 		f, err := strconv.ParseFloat(p.cur.text, 64)
 		if err != nil {
-			return nil, fmt.Errorf("mapping: %q 位置 %d：无效数字 %q",
+			return nil, fmt.Errorf("mapping: %q at offset %d: invalid number %q",
 				p.expr, p.cur.pos, p.cur.text)
 		}
 		if err := p.advance(); err != nil {

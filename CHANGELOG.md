@@ -17,6 +17,37 @@ config file to be rewritten, and vice versa.
 
 ## [Unreleased]
 
+### Added
+
+- `mask(s)` / `mask(s, keepTail)` mapping function — replaces everything but
+  the last `keepTail` characters with `*`, rune-aware and length-preserving.
+  When `keepTail` is at least as long as the value it masks *everything*
+  rather than returning the original: a masking function that leaks the input
+  on short values fails on exactly the rows nobody audits.
+- `ztpl demo redact` — a worked example of field-scoped redaction. The same
+  regex over-redacts an order id and misses a card number on one line, which
+  is the case for knowing where the fields are rather than what they look
+  like. Also shows the escape hatch (`parse` → your own code → `format`) and
+  what it costs.
+
+### Fixed
+
+- One parser error message was still in Chinese while every other message had
+  been translated.
+
+### Documented
+
+Two properties that were easy to over-read, both found while checking the
+claims the demo was about to make:
+
+- **Law A does not prove correct field delimitation.** `format(parse(t)) == t`
+  guarantees nothing was *lost*, not that boundaries landed where intended —
+  a greedy hole can swallow its neighbour and still reproduce the line
+  exactly, with `verify` reporting no problems.
+- **Non-matching lines are dropped, not passed through.** Safe for redaction
+  in that nothing leaks, but it is silent data loss, so `skipped` has to be
+  checked.
+
 ## [0.1.1] — 2026-08-12
 
 Documentation and packaging only. No change to the core, the ABI, or the

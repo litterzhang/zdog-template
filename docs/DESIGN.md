@@ -279,8 +279,14 @@ JSON 值是**自定界**的：从位置 p 开始，要么解析出唯一一个�
 
 **函数**：`length` `to_string` `to_number` `type` `not_null` `join` `keys` `values`
 `starts_with` `ends_with` `contains` `reverse` `sort`（JMESPath 内置）
-\+ `upper` `lower` `trim` `replace` `split`（按 JMESPath 的自定义函数机制扩展 ——
-规范本身没有大小写函数，但文本转换里太常用）。
+\+ `upper` `lower` `trim` `replace` `split` `mask`（按 JMESPath 的自定义函数机制
+扩展 —— 规范本身没有大小写函数，但文本转换里太常用）。
+
+`mask(s)` / `mask(s, keepTail)` 把末 `keepTail` 个字符之外的部分替换成 `*`，
+按 rune 处理且**保长**（脱敏产物通常要写回原格式，长度一变对齐就废了）。
+它有一处刻意的安全取舍：`keepTail >= 长度`时**全部打码而非原样返回** ——
+masking 函数在输入比预期短时把原值透出去是典型的数据泄漏 bug，且只在少数
+异常数据上触发、测不出来，所以这里 fail closed。见 `TestMaskFailsClosed`。
 
 ### ⚡ 性能分叉：裸字段名不走表达式
 
@@ -654,6 +660,8 @@ Go 用户直接 `import core/`，不走 `.so`。
 | ~~重复块内部的迭代切分不重试~~ | ✅ **已修**：`searchGroup` 枚举全部切分，块内也参与回溯。`${each\|sep=;}${k}:${v}${end}` 对 `"a:1;b;c"` 现在能正确解成单个迭代 | — |
 | **不匹配的行仍要走一遍回溯** | 批量日志里被跳过的行会走完整搜索（虽已多项式化）。短输入实测 324 ns、1 次分配 | 用更严格的模板让扁平引擎就能快速否决 |
 | **`.` 不跨行、按字节处理** | 模板以行为单位；多行记录需先自行切分 | 批量 API 已按 `\n` 分行 |
+| **Law A 不证明字段切分正确** | 这是最容易被误读的一条。`format(parse(t)) == t` 只保证**没丢数据**，不保证**边界切在你想要的地方**：贪婪的洞吞掉相邻字段后照样能原样吐回来，`verify` 报 0 问题。例：模板漏写 `card=`，`${phone}` 解出的是 `"13812345678 card=6225880137"` | `ztpl inspect` 看真实切分；脱敏等场景下这个方向是**多打码而非漏打码**（fail safe），但仍是错的。见 `ztpl demo redact` 第 3 节 |
+| **不匹配的行被丢弃而非透传** | 批量转换里 `skipped` 的行不出现在输出中。对脱敏是安全方向（不泄漏），但属于静默数据丢失 | 检查 `skipped == 0`；CLI 与 SDK 都会返回该计数 |
 
 ### 12.2 模板语法
 

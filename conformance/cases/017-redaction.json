@@ -1,0 +1,18 @@
+{
+  "name": "redaction",
+  "description": "脱敏：target 与 source 用同一个模板，mapping 只改需要打码的字段。这是双向模板最实际的用途——未打码字段走零拷贝 span 逐字节原样透出，骨架由模板重建，所以「你没点名的字段一个字节都没变」是结构性保证而不是靠测试覆盖。注意本用例刻意不标 laws：Law A 是 format(parse(t))==t，而脱敏本就要让输出不等于输入，标上去是错的。Law A 在这里的角色是前置条件——先用 verify 证明模板覆盖整行（无静默丢弃），脱敏才谈得上无损。",
+  "config": {
+    "version": 1,
+    "source": "user=${user} phone=${phone} card=${card} amt=${amt}",
+    "mapping": {
+      "user": "user",
+      "phone": "mask(phone, 4)",
+      "card": "mask(card)",
+      "amt": "amt"
+    },
+    "target": "user=${user} phone=${phone} card=${card} amt=${amt}"
+  },
+  "input": "user=alice phone=13812345678 card=6225880137 amt=42.50",
+  "output": "user=alice phone=*******5678 card=********** amt=42.50\n",
+  "tier": "T0/literal"
+}

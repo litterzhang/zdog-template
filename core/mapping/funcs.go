@@ -53,6 +53,7 @@ var funcs = map[string]*function{
 	"trim":    {1, 1, strFn(strings.TrimSpace)},
 	"replace": {3, 3, fnReplace},
 	"split":   {2, 2, fnSplit},
+	"mask":    {1, 2, fnMask},
 }
 
 func lookupFunc(name string) *function { return funcs[name] }
@@ -328,4 +329,49 @@ func fnSplit(args []any) (any, error) {
 		out[i] = p
 	}
 	return out, nil
+}
+
+// fnMask 把值打码：末 keepTail 个字符保留，其余替换成 '*'。
+//
+//	mask(phone)      13812345678 -> ***********
+//	mask(phone, 4)   13812345678 -> *******5678
+//
+// 三个刻意的决定：
+//
+//  1. **按 rune 而非字节**，跟 length()/reverse() 一致。否则中文姓名会被切成
+//     半个字符，产出非法 UTF-8。
+//
+//  2. **保长**。脱敏的产物通常要写回原格式（这正是双向模板的用武之处），
+//     长度一变，定宽或对齐敏感的格式就废了。代价是泄漏长度——对手机号、
+//     身份证这类定长字段无所谓，但别拿它打码密码。
+//
+//  3. **keepTail >= 长度时全部打码，而不是原样返回**。这是唯一一处安全相关
+//     的选择：masking 函数在输入比预期短时把原值透出去，是典型的数据泄漏
+//     bug，而且只在少数异常数据上触发，测不出来。这里 fail closed —— 宁可
+//     多打码，不可漏。
+func fnMask(args []any) (any, error) {
+	s, err := asString(args[0])
+	if err != nil {
+		return nil, err
+	}
+	keep := 0
+	if len(args) == 2 {
+		n, err := asNumber(args[1])
+		if err != nil {
+			return nil, err
+		}
+		if n < 0 || n != float64(int64(n)) {
+			return nil, fmt.Errorf("mask() keep-tail must be a non-negative whole number, got %v", args[1])
+		}
+		keep = int(n)
+	}
+	r := []rune(s)
+	if keep >= len(r) {
+		keep = 0 // fail closed，见上面第 3 点
+	}
+	cut := len(r) - keep
+	for i := 0; i < cut; i++ {
+		r[i] = '*'
+	}
+	return string(r), nil
 }

@@ -160,6 +160,11 @@ func TestFunctions(t *testing.T) {
 		{"join('|', split('a-b-c', '-'))", "a|b|c"},
 		{"not_null(nosuch, 'x')", "x"},
 		{"upper(nosuch)", ""},
+		{"mask('13812345678')", "***********"},
+		{"mask('13812345678', 4)", "*******5678"},
+		{"mask('13812345678', 0)", "***********"},
+		{"mask('张三丰', 1)", "**丰"}, // 按 rune，不切碎多字节字符
+		{"mask(nosuch)", ""},
 	} {
 		if got := evalStr(t, tc.expr, env); got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.expr, got, tc.want)
@@ -216,6 +221,36 @@ func TestRefs(t *testing.T) {
 			if !set[w] {
 				t.Errorf("Refs(%q) = %v, missing %q", tc.expr, got, w)
 			}
+		}
+	}
+}
+
+// TestMaskFailsClosed 锁住 mask() 唯一一处安全相关的行为。
+//
+// 输入比 keep-tail 短时必须全部打码，而不是把原值透出去。真实数据里总会有
+// 异常短的值（测试号码、脏数据、被上游截断的字段），如果那时候 mask 返回原值，
+// 泄漏就发生在最不可能被人工核对的那几行上。
+func TestMaskFailsClosed(t *testing.T) {
+	env := mapEnv{}
+	for _, tc := range []struct{ expr, want string }{
+		{"mask('123', 4)", "***"},     // keep 比长度大
+		{"mask('1234', 4)", "****"},   // keep 恰好等于长度，同样不能原样返回
+		{"mask('12345', 4)", "*2345"}, // 正常情况：只有这时才保留尾部
+		{"mask('', 4)", ""},
+	} {
+		if got := evalStr(t, tc.expr, env); got != tc.want {
+			t.Errorf("%s = %q, want %q（泄漏原值即为安全缺陷）", tc.expr, got, tc.want)
+		}
+	}
+
+	// keep-tail 必须是非负整数，写错了要当场报错而不是静默取整
+	for _, expr := range []string{"mask('abc', -1)", "mask('abc', 1.5)"} {
+		e, err := mapping.Compile(expr)
+		if err != nil {
+			continue // 编译期就拦下也可以
+		}
+		if _, err := mapping.Eval(e, env); err == nil {
+			t.Errorf("Eval(%q): expected an error", expr)
 		}
 	}
 }
