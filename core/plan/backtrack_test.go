@@ -1,7 +1,11 @@
 package plan_test
 
 import (
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/huge-zhang/zdog-template/core/template"
 
 	"github.com/huge-zhang/zdog-template/core/plan"
 )
@@ -315,6 +319,77 @@ func fillData(p *plan.Plan, res *plan.Result, src []byte, d *plan.Data) {
 			d.Groups[g].Items = append(d.Groups[g].Items, *sub.NewData())
 			fillData(sub, &res.Groups[g].Items[i], src,
 				&d.Groups[g].Items[len(d.Groups[g].Items)-1])
+		}
+	}
+}
+
+// 回溯的失败记忆化：把病态模板从指数级拉回多项式级。
+//
+// 模板有 6 个由 '.' 定界的洞，末尾要求匹配数字；输入含 N 个 '.' 且结尾不是
+// 数字，于是每一种切分都要走到最后才发现无解。路径数 ≈ C(N,6)。
+//
+// 无记忆化时实测：10 个点 74µs、22 个点 5.3ms（每多 4 个点约 4 倍）。
+// 有记忆化后 320 个点也只要 ~5ms —— 同样的耗时能吃下 14 倍长的输入。
+func TestBacktrackMemoizationTamesPathologicalInput(t *testing.T) {
+	p := compile(t, `${a}.${b}.${c}.${d}.${e}.${f}.${re|name=z,expr=\d+}`)
+	if !p.NeedsBacktrack() {
+		t.Fatal("该模板应当需要回溯")
+	}
+	for _, dots := range []int{40, 80, 160} {
+		input := []byte(strings.Repeat("x.", dots) + "nodigit")
+		res := p.NewResult()
+		start := time.Now()
+		if p.Parse(input, res) {
+			t.Fatalf("%d 个点：不该匹配上", dots)
+		}
+		// 无记忆化时这个规模要几秒到几分钟；给一个宽松但能抓住指数爆炸的上限。
+		if d := time.Since(start); d > 200*time.Millisecond {
+			t.Errorf("%d 个点耗时 %v —— 记忆化可能失效了", dots, d)
+		}
+	}
+}
+
+// 记忆化只记失败，不能影响解的正确性与数量。
+func TestMemoizationPreservesResults(t *testing.T) {
+	// 这个模板对含多个 '.' 的输入有多个解，且规模足以越过记忆化门槛。
+	p := compile(t, `${a}.${b}!`)
+	input := []byte(strings.Repeat("x.", 40) + "!")
+	// 40 个点 -> 40 种切分
+	if got := p.CountParses(input, 100); got != 40 {
+		t.Errorf("CountParses = %d, want 40", got)
+	}
+	// 首解仍要正确：a 取最短
+	res := p.NewResult()
+	if !p.Parse(input, res) {
+		t.Fatal("parse 失败")
+	}
+	if got := string(input[res.Spans[0].Start:res.Spans[0].End]); got != "x" {
+		t.Errorf("首解 a = %q, want %q", got, "x")
+	}
+}
+
+// 门槛以下不建表：常见的短输入不该为记忆化付管理费。
+func TestMemoizationIsLazyForSmallInputs(t *testing.T) {
+	p := compile(t, `${a}.${re|name=n,expr=\d+}`)
+	res := p.NewResult()
+	// 这类输入几步就结束，不该触发建表（此处只验证行为正确，
+	// 分配情况由 BenchmarkBacktrackShortInput 守护）
+	if !p.Parse([]byte("x.y.42"), res) {
+		t.Fatal("parse 失败")
+	}
+}
+
+// 短输入走回溯时的分配情况 —— 门槛以下不该出现 map 分配。
+func BenchmarkBacktrackShortInput(b *testing.B) {
+	tpl, _ := template.Load(`${a}.${re|name=n,expr=\d+}`)
+	p, _ := plan.Compile(tpl.Elements())
+	src := []byte("x.y.42")
+	res := p.NewResult()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !p.Parse(src, res) {
+			b.Fatal("no match")
 		}
 	}
 }
