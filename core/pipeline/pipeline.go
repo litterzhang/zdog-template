@@ -26,8 +26,10 @@ const ConfigVersion = 1
 // 「配置即数据」是多语言 SDK 的第一条铁律（见 DESIGN.md §8）：
 // 所有语言传同样的 JSON 字节，不需要每个语言各自维护一套构造 API。
 type Config struct {
-	Version int    `json:"version"`
-	Source  string `json:"source"`
+	Version int `json:"version"`
+	// Source 可省略。只做 format（数据不来自文本，只差渲染）时不需要源模板；
+	// 此时输入 JSON 的键直接就是目标字段名，mapping 不参与。
+	Source string `json:"source,omitempty"`
 	// Target 可省略。只做 parse / verify / inspect 时不需要目标模板。
 	Target string `json:"target,omitempty"`
 	// Mapping 是 目标字段 -> 源字段（或映射表达式）。缺省时按同名直通。
@@ -63,19 +65,34 @@ func Compile(cfg *Config) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline: unsupported config version %d (want %d)",
 			cfg.Version, ConfigVersion)
 	}
-	if cfg.Source == "" {
-		return nil, fmt.Errorf("pipeline: source template must not be empty")
-	}
-	src, err := engine.New(cfg.Source)
-	if err != nil {
-		return nil, fmt.Errorf("pipeline: source template: %w", err)
+	if cfg.Source == "" && cfg.Target == "" {
+		return nil, fmt.Errorf("pipeline: at least one of source or target is required")
 	}
 	codecs, err := compileCodecs(cfg.Shape)
 	if err != nil {
 		return nil, err
 	}
 
-	// target 可省略：只做 parse / verify / inspect 时不需要它。
+	// 只有目标模板：纯渲染。输入 JSON 的键直接是目标字段名，没有 mapping 可谈。
+	if cfg.Source == "" {
+		tgt, err := engine.New(cfg.Target)
+		if err != nil {
+			return nil, fmt.Errorf("pipeline: target template: %w", err)
+		}
+		if len(cfg.Mapping) > 0 {
+			return nil, fmt.Errorf(
+				"pipeline: mapping needs a source template — without one there is " +
+					"nothing to map from; the input keys are target field names directly")
+		}
+		return &Pipeline{tgt: tgt}, nil
+	}
+
+	src, err := engine.New(cfg.Source)
+	if err != nil {
+		return nil, fmt.Errorf("pipeline: source template: %w", err)
+	}
+
+	// 只有源模板：parse / verify / inspect。
 	if cfg.Target == "" {
 		return &Pipeline{src: src}, nil
 	}
@@ -89,6 +106,9 @@ func Compile(cfg *Config) (*Pipeline, error) {
 	}
 	return &Pipeline{src: src, tgt: tgt, route: r}, nil
 }
+
+// HasSource 报告该流水线是否配置了源模板。
+func (p *Pipeline) HasSource() bool { return p.src != nil }
 
 // HasTarget 报告该流水线是否配置了目标模板。
 func (p *Pipeline) HasTarget() bool { return p.tgt != nil }
@@ -111,7 +131,10 @@ type Scratch struct {
 
 // NewScratch 为该流水线分配工作区。每个 goroutine 应持有自己的实例。
 func (p *Pipeline) NewScratch() *Scratch {
-	s := &Scratch{res: p.src.Plan().NewResult()}
+	s := &Scratch{}
+	if p.src != nil {
+		s.res = p.src.Plan().NewResult()
+	}
 	if p.tgt != nil {
 		s.data = p.tgt.Plan().NewData()
 	}
@@ -120,7 +143,7 @@ func (p *Pipeline) NewScratch() *Scratch {
 
 // TransformLine 转换单行，结果追加到 dst。不匹配时返回 ok=false。
 func (p *Pipeline) TransformLine(dst, line []byte, s *Scratch) ([]byte, bool) {
-	if p.tgt == nil {
+	if p.tgt == nil || p.src == nil {
 		return dst, false
 	}
 	if !p.src.ParseInto(line, s.res) {

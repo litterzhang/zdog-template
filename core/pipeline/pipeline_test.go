@@ -262,3 +262,97 @@ func TestBlockExpressionErrorIsActionable(t *testing.T) {
 		}
 	}
 }
+
+// 不变量：parse | format ≡ transform
+//
+// 这是 blog 那张流程图的直接表述 —— 中间断开成两段，结果必须和一步到位相同。
+// 早先 format 不过 mapping，输入的键是目标字段名而 parse 吐的是源字段名，
+// 两者对不上，有 mapping 时 format(parse(x)) 会得到空结果。
+func TestParseFormatEquivalentToTransform(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		cfg   pipeline.Config
+		input string
+	}{
+		{"同名直通", pipeline.Config{
+			Version: 1, Source: "[${ts}] ${lv}", Target: "${lv}/${ts}",
+		}, "[T1] err\n[T2] warn"},
+		{"重命名", pipeline.Config{
+			Version: 1, Source: "[${ts}] ${lv}", Target: "${level}|${time}",
+			Mapping: map[string]string{"level": "lv", "time": "ts"},
+		}, "[T1] err"},
+		{"表达式", pipeline.Config{
+			Version: 1, Source: "[${ts}] ${lv}", Target: "${level}|${time}",
+			Mapping: map[string]string{"level": "upper(lv)", "time": "ts"},
+		}, "[T1] err\n[T2] warn"},
+		{"结构化岛取值", pipeline.Config{
+			Version: 1, Source: "[${ts}] ${json|name=p}", Target: "${host}",
+			Mapping: map[string]string{"host": "p.host || 'unknown'"},
+		}, `[T1] {"host":"web-1"}` + "\n" + `[T2] {"pct":9}`},
+		{"重复块", pipeline.Config{
+			Version: 1,
+			Source:  "items=${each|name=xs,sep=;}${id}:${n}${end}",
+			Target:  "${each|name=xs,sep=','}${id}x${n}${end}",
+		}, "items=a:1;b:2"},
+		{"shape 参与", pipeline.Config{
+			Version: 1, Source: "cpu=${c}", Target: "${usage}",
+			Mapping: map[string]string{"usage": "to_number(c)"},
+			Shape:   map[string]json.RawMessage{"usage": json.RawMessage(`{"type":"number","format":"%.2f"}`)},
+		}, "cpu=93.456"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := pipeline.Compile(&tc.cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in := []byte(tc.input)
+
+			direct, _, _ := p.Transform(nil, in, p.NewScratch())
+
+			mid, pst := p.ParseJSON(nil, in, p.NewScratch())
+			if pst.Failed != 0 {
+				t.Fatalf("parse 报错: %v", pst.Errors)
+			}
+			viaJSON, fst := p.FormatJSON(nil, mid, p.NewScratch())
+			if fst.Failed != 0 {
+				t.Fatalf("format 报错: %v", fst.Errors)
+			}
+
+			if string(direct) != string(viaJSON) {
+				t.Errorf("parse|format 与 transform 不等价\n  transform:    %q\n  parse|format: %q\n  中间 NDJSON:  %s",
+					direct, viaJSON, mid)
+			}
+		})
+	}
+}
+
+// 只有目标模板时是纯渲染：输入的键直接是目标字段名，不需要编一个用不上的源模板。
+func TestFormatOnlyPipeline(t *testing.T) {
+	p, err := pipeline.Compile(&pipeline.Config{Version: 1, Target: "${a}-${b}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.HasSource() {
+		t.Error("不该有源模板")
+	}
+	out, st := p.FormatJSON(nil, []byte(`{"a":"x","b":"y"}`), p.NewScratch())
+	if string(out) != "x-y\n" || st.OK != 1 {
+		t.Errorf("out=%q stats=%+v", out, st)
+	}
+}
+
+func TestPipelineConfigCombinations(t *testing.T) {
+	for _, tc := range []struct{ name, raw, wantErr string }{
+		{"都没有", `{"version":1}`, "at least one of source or target"},
+		{"无源模板却给了 mapping", `{"version":1,"target":"${a}","mapping":{"a":"b"}}`,
+			"mapping needs a source template"},
+	} {
+		cfg, err := pipeline.ParseConfig([]byte(tc.raw))
+		if err == nil {
+			_, err = pipeline.Compile(cfg)
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: error = %v, want substring %q", tc.name, err, tc.wantErr)
+		}
+	}
+}

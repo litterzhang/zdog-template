@@ -1,0 +1,19 @@
+{
+  "name": "parse-format-equivalence",
+  "description": "不变量 parse | format ≡ transform。这是 blog 那张流程图的直接表述：把流水线从中间断开成两段，结果必须与一步到位相同。为此 format 必须走与 transform 完全相同的 mapping 路由 —— 输入 JSON 的键是源字段名，而不是目标字段名。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} payload=${json|name=p}",
+    "mapping": {
+      "level": "upper(lv)",
+      "time": "ts",
+      "host": "p.host || 'unknown'"
+    },
+    "target": "${level}|${time}|${host}"
+  },
+  "input": "[T1] error payload={\"host\":\"web-1\"}\n[T2] warn payload={\"pct\":9}",
+  "output": "ERROR|T1|web-1\nWARN|T2|unknown\n",
+  "matched": 2,
+  "total": 2,
+  "tier": "T2/island"
+}

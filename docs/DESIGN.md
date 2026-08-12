@@ -267,6 +267,38 @@ JSON 值是**自定界**的：从位置 p 开始，要么解析出唯一一个�
 
 ---
 
+## 6a. `transform` / `parse` / `format` 三者的关系
+
+blog 那张流程图断开成两段就是 `parse` 与 `format`：
+
+```
+source text --parse--> [NDJSON: 源字段名] --format--> target text
+     └────────────────── transform ──────────────────────┘
+```
+
+**不变量：`parse | format ≡ transform`**（有测试与 conformance 用例守护）。
+
+为此 `format` 必须走与 `transform` **完全相同的 mapping 路由** —— 输入 JSON 的键
+是**源**字段名。曾经不是这样：`format` 直接按目标字段名取值，于是有 mapping 时
+`format(parse(x))` 会静默产出空结果，流程图从中间断开就接不回去了。
+
+| | 输入 | 用源模板 | 过 mapping | 实测 |
+|---|---|---|---|---|
+| `transform` | 原始文本 | ✅ | ✅ | **58 ns/行**（全程 `[]byte` 零拷贝） |
+| `parse` | 原始文本 | ✅ | ❌（吐源字段名） | ~350 ns/行（无岛） |
+| `format` | NDJSON | 仅用其字段名 | ✅ | ~2000 ns/行（map 驱动） |
+
+**`format` 的两种形态**（由有没有源模板决定）：
+
+- **有源模板** —— 键是源字段名，过 mapping。用于把断开的流水线接回去。
+- **无源模板** —— 没有 mapping 可谈，键直接是目标字段名。用于**数据不来自文本**的场景：
+  从数据库/API 拿到结构化数据，只差按模板渲染。
+
+> 要吞吐就用 `transform`。`format` 慢 33 倍且不可能追上 —— 它必须解 JSON、
+> 物化成 map，而 `transform` 从头到尾都是源文的子切片。
+
+---
+
 ## 6b. Shape codec —— 无出处字段的序列化规则
 
 ```json
@@ -556,7 +588,7 @@ Go 用户直接 `import core/`，不走 `.so`。
 | ~~错误行被静默跳过~~ | ✅ **已修**：`stats[3]` 给出 failed 计数，原因经 `LastError` 回传 | — |
 | **`parse` 仍比 `transform` 慢 4.6 倍** | 796 vs 174 ns/行。大头是 `json.Valid`（~450 ns）：非 strict 的岛在 Scan 只查了括号配对，直接拼进输出会毁掉整行 NDJSON | 只要最终文本就用 `transform`；`parse` 面向调试与中小批量 |
 | **`format` 整条路径是 map 驱动的** | **1997 ns/行（2 字段）→ 4335 ns（8 字段），比 `transform` 的 58 ns 慢 33 倍**。每行都要 `json.NewDecoder` + 解码进 `map[string]any` + 按名做哈希查找写进 context；成本随字段数线性增长（~390 ns/字段）。`NewContext` 只是其中一小块固定开销 | 逐行喂 JSON 本来就不是高吞吐场景；真要快就用 `transform`（源文本直接进、目标文本直接出，全程零拷贝） |
-| **`format` 不经过 mapping** | `transform` 是 源字段 --mapping--> 目标字段；`format` 直接按**目标**字段名从 JSON 取值。因此有 mapping 时 `parse \| format` **不等于** `transform` —— parse 吐的是源字段名，format 要的是目标字段名，对不上 | 要一步到位就用 `transform`；`format` 的定位是"我已经有目标形状的数据了，只差渲染" |
+| ~~`format` 不经过 mapping~~ | ✅ **已修**：`format` 走与 `transform` 相同的路由，`parse \| format ≡ transform` 成为不变量（见 §6a） | — |
 | **只回报前 10 条错误原因** | 计数不受限，但原因最多 `MaxReportedErrors` 条 | 逐行诊断用 `verify` |
 
 ### 12.6 SDK 与 CLI

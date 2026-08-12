@@ -180,7 +180,13 @@ func truncate(b []byte) string {
 }
 
 // FormatJSON 把 NDJSON 的每一行（一个对象）按目标模板渲染成文本。
-func (p *Pipeline) FormatJSON(dst, in []byte, _ *Scratch) ([]byte, BatchStats) {
+//
+// 输入的键是**源**字段名还是**目标**字段名，取决于流水线有没有源模板：
+//
+//	有源模板 —— 键是源字段名，走与 transform 完全相同的 mapping 路由。
+//	            于是 parse | format ≡ transform 成立（见 DESIGN.md §6c）。
+//	无源模板 —— 没有 mapping 可谈，键直接就是目标字段名（纯渲染）。
+func (p *Pipeline) FormatJSON(dst, in []byte, s *Scratch) ([]byte, BatchStats) {
 	var st BatchStats
 	out := dst
 	if p.tgt == nil {
@@ -195,12 +201,7 @@ func (p *Pipeline) FormatJSON(dst, in []byte, _ *Scratch) ([]byte, BatchStats) {
 			st.fail(st.Total, fmt.Errorf("input is not valid JSON: %w", err))
 			return
 		}
-		ctx := p.tgt.NewContext()
-		if err := mapToContext(ctx, obj); err != nil {
-			st.fail(st.Total, err)
-			return
-		}
-		rendered, err := p.tgt.Format(ctx)
+		rendered, err := p.renderObject(obj, s)
 		if err != nil {
 			st.fail(st.Total, err)
 			return
@@ -209,6 +210,31 @@ func (p *Pipeline) FormatJSON(dst, in []byte, _ *Scratch) ([]byte, BatchStats) {
 		st.OK++
 	})
 	return out, st
+}
+
+// renderObject 把一个已解码的对象渲染成目标文本。
+func (p *Pipeline) renderObject(obj map[string]any, s *Scratch) ([]byte, error) {
+	// 有源模板：键是源字段名，过 mapping —— 与 transform 同一套路由。
+	if p.src != nil {
+		if s.data == nil {
+			s.data = p.tgt.Plan().NewData()
+		}
+		s.arena = s.arena[:0]
+		if err := p.route.fillFromMap(s.data, obj, s, p.src.Plan()); err != nil {
+			return nil, err
+		}
+		res, ok := p.tgt.Plan().Format(nil, s.data)
+		if !ok {
+			return nil, fmt.Errorf("cannot render: some target fields are unset")
+		}
+		return res, nil
+	}
+	// 无源模板：纯渲染，键直接是目标字段名。
+	ctx := p.tgt.NewContext()
+	if err := mapToContext(ctx, obj); err != nil {
+		return nil, err
+	}
+	return p.tgt.Format(ctx)
 }
 
 // VerifyJSON 逐行校验定律 A 与歧义，输出 NDJSON 报告。

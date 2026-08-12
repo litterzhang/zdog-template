@@ -318,3 +318,95 @@ func blockNames(p *plan.Plan) []string {
 	}
 	return out
 }
+
+// mapEnv 让映射表达式能在一个已解码的 JSON 对象上求值。
+//
+// parse 侧的 env 是惰性的（按需从源文切片、按需解码岛）；这里的输入已经是
+// 物化好的值，所以直接查表即可。format 不在热路径上，简单优先。
+type mapEnv struct{ obj map[string]any }
+
+func (e mapEnv) Value(name string) (any, bool, error) {
+	v, ok := e.obj[name]
+	return v, ok, nil
+}
+
+var _ mapping.Env = mapEnv{}
+
+// fillFromMap 按路由把一个 JSON 对象搬进目标渲染输入。
+//
+// 与 fill 的差别只在数据来源：fill 从源文切片（零拷贝），这里从已解码的
+// map 取值。**路由本身是同一套** —— 于是 format 与 transform 走的是同一条
+// mapping 语义，`parse | format` 才能等价于 `transform`。
+func (r *route) fillFromMap(d *plan.Data, obj map[string]any, s *Scratch, srcPlan *plan.Plan) error {
+	if cap(d.Values) < len(r.scalars) {
+		d.Values = make([][]byte, len(r.scalars))
+	}
+	d.Values = d.Values[:len(r.scalars)]
+	env := mapEnv{obj: obj}
+
+	for i := range r.scalars {
+		ss := &r.scalars[i]
+
+		var v any
+		if ss.srcSlot >= 0 {
+			// 直连源字段：从 map 里按源字段名取
+			name := srcPlan.Names()[ss.srcSlot]
+			raw, ok := obj[name]
+			if !ok {
+				return fmt.Errorf("missing source field %q", name)
+			}
+			v = raw
+		} else {
+			var err error
+			if v, err = mapping.Eval(ss.expr, env); err != nil {
+				return err
+			}
+		}
+
+		start := len(s.arena)
+		var out []byte
+		var err error
+		if ss.codec != nil {
+			out, err = ss.codec.Encode(s.arena, v)
+		} else {
+			out, err = mapping.Serialize(s.arena, v)
+		}
+		if err != nil {
+			return err
+		}
+		s.arena = out
+		d.Values[i] = s.arena[start:len(s.arena):len(s.arena)]
+	}
+
+	if cap(d.Groups) < len(r.groups) {
+		d.Groups = make([]plan.GroupData, len(r.groups))
+	}
+	d.Groups = d.Groups[:len(r.groups)]
+	for g := range r.groups {
+		gr := &r.groups[g]
+		name := srcPlan.Group(gr.srcGroup).Name
+		d.Groups[g].Items = d.Groups[g].Items[:0]
+
+		raw, ok := obj[name]
+		if !ok {
+			continue // 缺失的块渲染成零次迭代；AllowEmpty 会在 Format 里裁决
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			return fmt.Errorf("block %q expects an array, got %T", name, raw)
+		}
+		subPlan := srcPlan.Group(gr.srcGroup).Sub
+		for _, it := range items {
+			m, ok := it.(map[string]any)
+			if !ok {
+				return fmt.Errorf("block %q items must be objects, got %T", name, it)
+			}
+			d.Groups[g].Items = plan.GrowData(d.Groups[g].Items)
+			if err := gr.sub.fillFromMap(
+				&d.Groups[g].Items[len(d.Groups[g].Items)-1], m, s, subPlan); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
