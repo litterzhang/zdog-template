@@ -1,0 +1,16 @@
+{
+  "name": "regex-best-match",
+  "description": "blog 中的规范例子：模板 ${re|expr=\\d+}345 对 \"123345\" 应匹配 \"123\"，而不是 \"123345\" 也不是 \"1\" —— 洞的边界由后继元素裁决（best-match / 最短优先）。",
+  "config": {
+    "version": 1,
+    "source": "${re|name=n,expr=\\d+}345",
+    "target": "n=${n}"
+  },
+  "input": "123345",
+  "output": "n=123\n",
+  "bindings": {
+    "n": "123"
+  },
+  "tier": "T1/regex",
+  "laws": ["A"]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "literal-holes",
+  "description": "T0 层：全部洞由字面量定界，最快路径。字段原样直通。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} ${msg}",
+    "target": "[${ts}] ${lv} ${msg}"
+  },
+  "input": "[2026-08-12T01:00:00Z] ERROR disk full",
+  "output": "[2026-08-12T01:00:00Z] ERROR disk full\n",
+  "bindings": {
+    "ts": "2026-08-12T01:00:00Z",
+    "lv": "ERROR",
+    "msg": "disk full"
+  },
+  "tier": "T0/literal",
+  "laws": ["A"]
+}

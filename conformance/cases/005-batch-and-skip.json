@@ -1,0 +1,14 @@
+{
+  "name": "batch-and-skip",
+  "description": "批量：输入按 \\n 分行；不匹配的行被跳过而不是让整批失败。批量是多语言 SDK 的架构必需品（见 DESIGN.md §8）。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} ${msg}",
+    "mapping": { "level": "lv", "text": "msg" },
+    "target": "${level}|${text}"
+  },
+  "input": "[T1] ERROR first\nthis line does not match\n[T2] WARN second\n\n[T3] INFO third",
+  "output": "ERROR|first\nWARN|second\nINFO|third\n",
+  "matched": 3,
+  "total": 4
+}

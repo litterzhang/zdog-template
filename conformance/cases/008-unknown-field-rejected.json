@@ -1,0 +1,10 @@
+{
+  "name": "unknown-target-field-rejected",
+  "description": "目标模板引用了源模板没有的字段，必须在编译期报错并指明可用字段。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv}",
+    "target": "${nope}"
+  },
+  "compile_error": "unknown source field"
+}

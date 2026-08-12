@@ -382,16 +382,34 @@ Go 用户直接 `import core/`，不走 `.so`。
 
 | 阶段 | 内容 | 出口标准 |
 |---|---|---|
-| **P0** | 仓库骨架、ABI v1 冻结、conformance 格式、bench 门禁 | CI 绿 |
-| **P1** | shape 移植（修 3 bug）+ 语法层移植 + plan 编译器 + engine | T0 层跑通，**定律 A 全绿** |
-| **P2** | 正则洞（仅必要时）+ JSON 结构化岛 | 定律 A 在含岛模板全绿 |
-| **P3** | Shape codec + `ZtplVerify` | **定律 B 全绿** |
-| **P4** | mapping 表达式（JMESPath 子集） | 端到端日志→JSON 报文 |
-| **P5** | Python + Java SDK，conformance 双语言绿灯 | |
-| **P6** | `${each}` 重复块、歧义检测（`strict` 模式枚举全部解） | |
+| **P0** | 仓库骨架、ABI v1 冻结、conformance 格式、bench 门禁 | ✅ 已完成 |
+| **P1** | shape 移植 + 语法层移植 + plan 编译器 + engine + pipeline + C ABI + Python SDK | ✅ **定律 A/B 全绿，8/8 conformance 用例 Go 与 Python 双语言通过** |
+| **P2** | `${each}` 重复块（多行/列表转换的刚需） | |
+| **P3** | Shape codec 接入 format，无出处字段的序列化 | 定律 B 覆盖类型化字段 |
+| **P4** | mapping 表达式（JMESPath 子集）、结构化路径 `user.name` / `items[]` | 端到端日志 → JSON 报文 |
+| **P5** | Java SDK（FFM API），conformance 三语言绿灯 | |
+| **P6** | 歧义检测 `strict` 模式（枚举全部解）、跨算子回溯（T3） | |
+
+### P1 已知限制（已记录，非遗漏）
+
+- `OpRegexUntil` 只在**本算子内**回溯定界符，不会因后续算子失败而重试。完整回溯是 P6 的 T3 层。
+- Context 目前按洞名平铺；结构化路径（`user.name`、`items[]`）随 P4 的 mapping 层一起做。
+- mapping 目前只支持同名/重命名直通，表达式求值是 P4。
+- 非 strict 的 JSON 岛只校验结构配对，不校验完整合法性（67 ns vs 360 ns 的取舍）；
+  需要严格校验时写 `${json|name=p,strict=true}`。
 
 ### 性能门禁（不是事后调优，是设计约束）
 
-- T0 层 plan ≤ 0.10 µs/行
-- 端到端 ≥ 10 M行/秒（单核）
-- 宿主绑定层损耗 ≤ 10%
+由 `make bench` 守护。括号内为 P1 实测值：
+
+| 门禁 | 阈值 | 实测 |
+|---|---|---|
+| T0 层 parse | ≤ 100 ns/行 | **45.07 ns/行**（1598 MB/s，0 分配） |
+| 端到端 transform | ≥ 10 M行/秒 | **12.08 M行/秒**（82.80 ns/行，0 分配） |
+| Python SDK 端到端 | ≥ 10 M行/秒 | **11.09 M行/秒**（90.14 ns/行） |
+| SDK 相对纯 Python | ≥ 5x | **10.4x** |
+| 宿主绑定层损耗 | ≤ 10% | **8.9%**（90.14 vs 82.80 ns/行） |
+
+> 绑定层损耗的构成：ABI 的一次 Go 缓冲 → C 缓冲 memcpy（约 4.5%）+ ctypes 调用开销。
+> 曾一度是 14.9%，原因是 SDK 里用了 `buf.raw[:n]` —— `.raw` 会先把**整个**缓冲物化成
+> bytes 再切片，代价 O(buffer_size) 而非 O(n)。改用 `ctypes.string_at(buf, n)` 后降到 8.9%。

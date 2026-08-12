@@ -1,0 +1,10 @@
+{
+  "name": "ambiguous-template-rejected",
+  "description": "两个相邻的无约束洞之间没有定界符，边界无从确定。这类歧义模板必须在编译期拒绝，而不是在运行期猜一个答案。",
+  "config": {
+    "version": 1,
+    "source": "${a}${b}",
+    "target": "${a}"
+  },
+  "compile_error": "ambiguous"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "unicode-boundaries",
+  "description": "多字节字符：旧原型按字节切片，测试数据里正好有中文，切在半个字符上是必然的。边界只允许落在字面量/正则匹配处。",
+  "config": {
+    "version": 1,
+    "source": "前缀 ${a} 中国人 ${b} 后缀",
+    "mapping": { "x": "b", "y": "a" },
+    "target": "${x}／${y}"
+  },
+  "input": "前缀 值一 中国人 值二 后缀",
+  "output": "值二／值一\n",
+  "bindings": {
+    "a": "值一",
+    "b": "值二"
+  },
+  "tier": "T0/literal",
+  "laws": ["A"]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "json-island",
+  "description": "结构化岛：正则无法匹配嵌套/配对结构，岛是自定界的。注意字符串内的 } 与 ] 不得影响边界。岛作为原始字节直通，永远不会被解码。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} ${msg} payload=${json|name=p}",
+    "mapping": {
+      "level": "lv",
+      "data": "p"
+    },
+    "target": "${level} ${data}"
+  },
+  "input": "[T1] ERROR disk full payload={\"host\":\"web-1\",\"tags\":[\"a\",\"b\"],\"s\":\"}]\",\"n\":{\"x\":1}}",
+  "output": "ERROR {\"host\":\"web-1\",\"tags\":[\"a\",\"b\"],\"s\":\"}]\",\"n\":{\"x\":1}}\n",
+  "bindings": {
+    "ts": "T1",
+    "lv": "ERROR",
+    "msg": "disk full",
+    "p": "{\"host\":\"web-1\",\"tags\":[\"a\",\"b\"],\"s\":\"}]\",\"n\":{\"x\":1}}"
+  },
+  "tier": "T2/island",
+  "laws": ["A"]
+}

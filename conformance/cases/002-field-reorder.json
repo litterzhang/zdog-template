@@ -1,0 +1,23 @@
+{
+  "name": "field-reorder",
+  "description": "mapping 层：目标字段按名映射到源字段并重排顺序。这是全链路转换的最小完整例子。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} ${msg}",
+    "mapping": {
+      "level": "lv",
+      "time": "ts",
+      "text": "msg"
+    },
+    "target": "${level}|${time}|${text}"
+  },
+  "input": "[2026-08-12T01:00:00Z] ERROR disk full",
+  "output": "ERROR|2026-08-12T01:00:00Z|disk full\n",
+  "bindings": {
+    "ts": "2026-08-12T01:00:00Z",
+    "lv": "ERROR",
+    "msg": "disk full"
+  },
+  "tier": "T0/literal",
+  "laws": ["A"]
+}

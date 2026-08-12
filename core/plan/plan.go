@@ -80,6 +80,17 @@ type Plan struct {
 	names []string
 	index map[string]int
 	tier  Tier
+	// islands[slot] 非 nil 表示该槽位是结构化岛，读取值时需要解码。
+	// 纯直通的字段永远不会走到解码。
+	islands []model.Island
+}
+
+// Island 返回该槽位对应的结构化岛，非岛槽位返回 nil。
+func (p *Plan) Island(slot int) model.Island {
+	if slot < 0 || slot >= len(p.islands) {
+		return nil
+	}
+	return p.islands[slot]
 }
 
 // Ops 返回算子序列。调用方不得修改。
@@ -115,6 +126,7 @@ func Compile(elements []model.Element) (*Plan, error) {
 		}
 		i := len(p.names)
 		p.names = append(p.names, name)
+		p.islands = append(p.islands, nil)
 		p.index[name] = i
 		return i
 	}
@@ -142,7 +154,9 @@ func Compile(elements []model.Element) (*Plan, error) {
 			p.ops = append(p.ops, Op{Kind: kind, Lit: []byte(e.Content()), Slot: -1})
 
 		case model.Island:
-			p.ops = append(p.ops, Op{Kind: OpIsland, Island: e, Slot: slotFor(e.Name())})
+			slot := slotFor(e.Name())
+			p.islands[slot] = e
+			p.ops = append(p.ops, Op{Kind: OpIsland, Island: e, Slot: slot})
 			p.raise(TierIsland)
 
 		case model.Hole:
