@@ -1,0 +1,21 @@
+# build artifacts
+*.so
+*.dylib
+*.dll
+*.h
+!**/include/*.h
+/bench/*.bin
+driver
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# editor / os
+.DS_Store
+.idea/
+*.swp
