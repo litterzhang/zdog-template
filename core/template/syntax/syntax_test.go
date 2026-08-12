@@ -131,6 +131,33 @@ func TestParseAttrsError(t *testing.T) {
 	}
 }
 
+// 单引号包裹的值：`sep=','` 是最常见的分隔符写法，
+// 若强制写成 `sep=\,` 太反直觉。
+func TestParseAttrsQuoted(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args string
+		want Attrs
+	}{
+		{"quoted comma", `name=xs,sep=','`, Attrs{"name": "xs", "sep": ","}},
+		{"quoted comma first", `sep=',',name=xs`, Attrs{"name": "xs", "sep": ","}},
+		{"quoted with space", `sep=', '`, Attrs{"sep": ", "}},
+		{"quoted brace", `sep='}'`, Attrs{"sep": "}"}},
+		{"escaped comma still works", `sep=\,`, Attrs{"sep": ","}},
+		{"apostrophe mid-value is literal", `expr=it's`, Attrs{"expr": "it's"}},
+		{"empty quotes", `sep=''`, Attrs{"sep": ""}},
+	} {
+		got, err := ParseAttrs(tc.args)
+		if err != nil {
+			t.Errorf("%s: ParseAttrs(%q) error: %v", tc.name, tc.args, err)
+			continue
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: ParseAttrs(%q) = %v, want %v", tc.name, tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestEscapeRoundTrip(t *testing.T) {
 	for _, s := range []string{`a,b`, `a}b`, `a\b`, `plain`} {
 		esc := EscapeAttrValue(s)

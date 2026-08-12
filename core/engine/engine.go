@@ -41,8 +41,8 @@ func (e *Engine) Tier() plan.Tier { return e.pl.Tier() }
 // Names 返回全部绑定名。
 func (e *Engine) Names() []string { return e.pl.Names() }
 
-// NewSpans 分配一组可复用的跨度缓冲，供 ParseInto 使用。
-func (e *Engine) NewSpans() []plan.Span { return make([]plan.Span, e.pl.NumSlots()) }
+// NewResult 分配一个可复用的解析结果容器，供 ParseInto 使用。
+func (e *Engine) NewResult() *plan.Result { return e.pl.NewResult() }
 
 // ErrNoMatch 表示输入不匹配模板。
 type ErrNoMatch struct{ Input []byte }
@@ -57,16 +57,16 @@ func (e *ErrNoMatch) Error() string {
 
 // Parse 解析输入并返回 context。src 的所有权移交给 context（不会被拷贝）。
 func (e *Engine) Parse(src []byte) (*binding.Context, error) {
-	spans := e.NewSpans()
-	if !e.pl.Parse(src, spans) {
+	res := e.NewResult()
+	if !e.pl.Parse(src, res) {
 		return nil, &ErrNoMatch{Input: src}
 	}
-	return binding.FromParse(e.pl, src, spans), nil
+	return binding.FromParse(e.pl, src, res), nil
 }
 
-// ParseInto 是 Parse 的零分配版本，spans 由调用方复用。
-func (e *Engine) ParseInto(src []byte, spans []plan.Span) bool {
-	return e.pl.Parse(src, spans)
+// ParseInto 是 Parse 的零分配版本，结果容器由调用方复用。
+func (e *Engine) ParseInto(src []byte, res *plan.Result) bool {
+	return e.pl.Parse(src, res)
 }
 
 // NewContext 建一个空 context，用于 mapping 之后的目标侧渲染。
@@ -93,8 +93,8 @@ func (e *Engine) FormatTo(dst []byte, ctx *binding.Context) ([]byte, error) {
 // formatFull 无条件走完整算子渲染，不使用 replay。
 // 定律校验必须用它 —— 否则 replay 会让 format(parse(t)) == t 变成恒真的空断言。
 func (e *Engine) formatFull(dst []byte, ctx *binding.Context) ([]byte, error) {
-	vals := ctx.Values(nil)
-	out, ok := e.pl.Format(dst, vals)
+	data := ctx.Data(nil)
+	out, ok := e.pl.Format(dst, data)
 	if !ok {
 		if missing := ctx.Missing(); len(missing) > 0 {
 			return dst, fmt.Errorf("engine: cannot format, unset bindings: %v", missing)

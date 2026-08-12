@@ -36,8 +36,10 @@ func SplitExpr(expr string) (tag, args string, sugar bool) {
 // ParseAttrs 解析 `k=v,k=v` 属性串。
 //
 // 相对旧原型 template/util.StringToMap 的修复：
-//  1. 用 SplitN(item, "=", 2) 而非 Split —— 否则 `expr=a=b` 会被截断成 `a`。
+//  1. 用 Cut(item, "=") 而非 Split —— 否则 `expr=a=b` 会被截断成 `a`。
 //  2. 按未转义的 ',' 切分 —— 否则 `expr=\d{1,3}` 会被切成两段。
+//  3. 支持单引号包裹的值 —— `sep=','` 是最常见的分隔符写法，
+//     若强制写成 `sep=\,` 太反直觉。引号内的 ',' 与 '}' 不参与切分。
 func ParseAttrs(args string) (Attrs, error) {
 	attrs := Attrs{}
 	if strings.TrimSpace(args) == "" {
@@ -56,29 +58,53 @@ func ParseAttrs(args string) (Attrs, error) {
 			attrs[k] = ""
 			continue
 		}
-		attrs[k] = v
+		attrs[k] = unquote(v)
 	}
 	return attrs, nil
 }
 
-// splitUnescaped 按未被反斜杠转义的 sep 切分，并还原转义。
+// unquote 去掉单引号包裹。
+func unquote(v string) string {
+	if len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\'' {
+		return v[1 : len(v)-1]
+	}
+	return v
+}
+
+// splitUnescaped 按未被反斜杠转义、且不在单引号内的 sep 切分，并还原转义。
 func splitUnescaped(s string, sep byte) []string {
 	var (
-		out []string
-		b   strings.Builder
+		out     []string
+		b       strings.Builder
+		inQuote bool
+		atValue bool // 上一个非转义字符是 '='，此时的 ' 才开启引号
 	)
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) && isEscapable(s[i+1]) {
+		c := s[i]
+		if c == '\\' && i+1 < len(s) && isEscapable(s[i+1]) {
 			b.WriteByte(s[i+1])
 			i++
+			atValue = false
 			continue
 		}
-		if s[i] == sep {
+		if c == '\'' {
+			if inQuote {
+				inQuote = false
+			} else if atValue {
+				inQuote = true
+			}
+			b.WriteByte(c)
+			atValue = false
+			continue
+		}
+		if c == sep && !inQuote {
 			out = append(out, b.String())
 			b.Reset()
+			atValue = false
 			continue
 		}
-		b.WriteByte(s[i])
+		b.WriteByte(c)
+		atValue = c == '='
 	}
 	out = append(out, b.String())
 	return out

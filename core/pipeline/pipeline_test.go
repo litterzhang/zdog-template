@@ -59,6 +59,36 @@ func BenchmarkTransformIsland(b *testing.B) {
 	})
 }
 
+// 重复块的代价：每次迭代都要跑一遍子计划，且组结果需要按迭代数增长。
+func BenchmarkTransformEach(b *testing.B) {
+	p, err := pipeline.Compile(&pipeline.Config{
+		Version: 1,
+		Source:  "[${ts}] items=${each|name=items,sep=;}${id}:${qty}${end}",
+		Mapping: map[string]string{"when": "ts", "rows": "items", "sku": "id", "n": "qty"},
+		Target:  "${when} ${each|name=rows,sep=','}${sku}x${n}${end}",
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	line := "[T1] items=a:1;b:2;c:3;d:4;e:5"
+	in := []byte(strings.Repeat(line+"\n", benchN))
+	s := p.NewScratch()
+	out := make([]byte, 0, len(in)*2)
+	if _, matched, _ := p.Transform(out[:0], in, s); matched != benchN {
+		b.Fatalf("only %d/%d matched", matched, benchN)
+	}
+	b.SetBytes(int64(len(in)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out, _, _ = p.Transform(out[:0], in, s)
+	}
+	b.StopTimer()
+	nsPerLine := float64(b.Elapsed().Nanoseconds()) / float64(b.N) / benchN
+	b.ReportMetric(nsPerLine, "ns/line")
+	b.ReportMetric(nsPerLine/5, "ns/item")
+}
+
 func TestTransformBasics(t *testing.T) {
 	p, err := pipeline.Compile(&pipeline.Config{
 		Version: 1,

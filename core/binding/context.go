@@ -9,68 +9,90 @@ import (
 // Context 承载一次 parse 的全部绑定，或一份待 format 的目标数据。
 //
 // 它按槽位（plan.Slot）而非 map 存储 —— 热路径上没有哈希查找。
+// 重复块的每次迭代是一个子 Context，共享最外层源文，通过 Result.Base 定位。
+//
 // Context 不是并发安全的；每个 goroutine 应持有自己的实例。
 type Context struct {
-	p   *plan.Plan
-	src []byte // parse 得来的源文；scratch context 为 nil
+	p    *plan.Plan
+	src  []byte // 最外层源文；scratch context 为 nil
+	res  *plan.Result
+	root *Context // nil 表示自己就是根
 
-	spans     []plan.Span
-	overrides [][]byte // 非 nil 表示该槽位被显式覆盖
-	values    []any    // 惰性解码结果
+	overrides [][]byte
+	values    []any
 	decoded   []bool
+	subs      [][]*Context // subs[groupSlot][i] —— 惰性构建
 
 	dirty bool
+}
+
+func newContext(p *plan.Plan, src []byte, res *plan.Result, root *Context) *Context {
+	n := p.NumSlots()
+	c := &Context{
+		p: p, src: src, res: res, root: root,
+		overrides: make([][]byte, n),
+		values:    make([]any, n),
+		decoded:   make([]bool, n),
+	}
+	if g := p.NumGroups(); g > 0 {
+		c.subs = make([][]*Context, g)
+	}
+	return c
 }
 
 // NewContext 建一个空的 context，所有槽位都无出处。
 // 用于 mapping 之后的目标侧数据。
 func NewContext(p *plan.Plan) *Context {
-	n := p.NumSlots()
-	return &Context{
-		p:         p,
-		spans:     newNoSpans(n),
-		overrides: make([][]byte, n),
-		values:    make([]any, n),
-		decoded:   make([]bool, n),
-		dirty:     true, // 无源文，必然要走完整渲染
-	}
+	c := newContext(p, nil, p.NewResult(), nil)
+	c.dirty = true // 无源文，必然要走完整渲染
+	return c
 }
 
-// FromParse 由一次成功的 parse 构造 context。src 与 spans 的所有权移交给 context。
-func FromParse(p *plan.Plan, src []byte, spans []plan.Span) *Context {
-	n := p.NumSlots()
-	return &Context{
-		p:         p,
-		src:       src,
-		spans:     spans,
-		overrides: make([][]byte, n),
-		values:    make([]any, n),
-		decoded:   make([]bool, n),
-	}
-}
-
-func newNoSpans(n int) []plan.Span {
-	s := make([]plan.Span, n)
-	for i := range s {
-		s[i] = plan.NoSpan
-	}
-	return s
+// FromParse 由一次成功的 parse 构造 context。src 与 res 的所有权移交给 context。
+func FromParse(p *plan.Plan, src []byte, res *plan.Result) *Context {
+	return newContext(p, src, res, nil)
 }
 
 // Plan 返回背后的执行计划。
 func (c *Context) Plan() *plan.Plan { return c.p }
 
-// Source 返回源文，scratch context 返回 nil。
+// Source 返回最外层源文，scratch context 返回 nil。
 func (c *Context) Source() []byte { return c.src }
+
+// Result 返回底层解析结果。
+func (c *Context) Result() *plan.Result { return c.res }
 
 // Dirty 报告是否有槽位被修改过。
 //
 // 这是定律 A 的性能红利（见 DESIGN.md §7）：未修改时 format 的正确答案
 // 就是源文本身，直接 memcpy 即可，不必走一遍算子。
-func (c *Context) Dirty() bool { return c.dirty }
+func (c *Context) Dirty() bool {
+	if c.root != nil {
+		return c.root.Dirty()
+	}
+	return c.dirty
+}
 
-// Names 返回全部绑定名，下标即槽位号。
+func (c *Context) markDirty() {
+	if c.root != nil {
+		c.root.markDirty()
+		return
+	}
+	c.dirty = true
+}
+
+// Names 返回全部标量绑定名，下标即槽位号。
 func (c *Context) Names() []string { return c.p.Names() }
+
+// GroupNames 返回全部重复块名。
+func (c *Context) GroupNames() []string {
+	gs := c.p.Groups()
+	out := make([]string, len(gs))
+	for i := range gs {
+		out[i] = gs[i].Name
+	}
+	return out
+}
 
 // Raw 返回槽位的原始字节。第二个返回值报告该槽位是否已填充。
 func (c *Context) Raw(name string) ([]byte, bool) {
@@ -83,14 +105,17 @@ func (c *Context) Raw(name string) ([]byte, bool) {
 
 // RawAt 按槽位号取原始字节。
 func (c *Context) RawAt(slot int) ([]byte, bool) {
-	if slot < 0 || slot >= len(c.spans) {
+	if slot < 0 || slot >= len(c.overrides) {
 		return nil, false
 	}
 	if ov := c.overrides[slot]; ov != nil {
 		return ov, true
 	}
-	s := c.spans[slot]
-	if !s.Valid() || c.src == nil {
+	if c.src == nil {
+		return nil, false
+	}
+	s := c.res.Abs(c.res.Spans[slot])
+	if !s.Valid() {
 		return nil, false
 	}
 	return c.src[s.Start:s.End], true
@@ -107,11 +132,8 @@ func (c *Context) Binding(name string) (Binding, bool) {
 		return Binding{}, false
 	}
 	b := Binding{Name: name, Raw: raw, Span: plan.NoSpan}
-	// 只有未被覆盖的槽位才保留源文出处
 	if c.overrides[slot] == nil && c.src != nil {
-		b.Span = c.spans[slot]
-	} else {
-		b.Raw = raw
+		b.Span = c.res.Abs(c.res.Spans[slot])
 	}
 	return b, true
 }
@@ -159,28 +181,112 @@ func (c *Context) Set(name string, raw []byte) error {
 	c.overrides[slot] = raw
 	c.decoded[slot] = false
 	c.values[slot] = nil
-	c.dirty = true
+	c.markDirty()
 	return nil
 }
 
 // SetString 是 Set 的字符串便利版本。
 func (c *Context) SetString(name, v string) error { return c.Set(name, []byte(v)) }
 
-// Values 按槽位顺序收集用于 format 的字节切片。
-// 未填充的槽位为 nil，format 会因此失败。
-func (c *Context) Values(dst [][]byte) [][]byte {
-	n := c.p.NumSlots()
-	if cap(dst) < n {
-		dst = make([][]byte, n)
+// ---- 重复块 ----
+
+// GroupLen 返回某个重复块的迭代次数。
+func (c *Context) GroupLen(name string) (int, bool) {
+	slot, ok := c.p.GroupSlot(name)
+	if !ok {
+		return 0, false
 	}
-	dst = dst[:n]
+	return len(c.res.Groups[slot].Items), true
+}
+
+// GroupItem 返回重复块第 i 次迭代的子 context。
+func (c *Context) GroupItem(name string, i int) (*Context, bool) {
+	slot, ok := c.p.GroupSlot(name)
+	if !ok {
+		return nil, false
+	}
+	items := c.res.Groups[slot].Items
+	if i < 0 || i >= len(items) {
+		return nil, false
+	}
+	c.growSubs(slot, len(items))
+	if c.subs[slot][i] == nil {
+		root := c.root
+		if root == nil {
+			root = c
+		}
+		c.subs[slot][i] = newContext(c.p.Group(slot).Sub, c.src, &items[i], root)
+	}
+	return c.subs[slot][i], true
+}
+
+// AppendGroupItem 给重复块追加一次迭代，返回可写入的子 context。
+func (c *Context) AppendGroupItem(name string) (*Context, error) {
+	slot, ok := c.p.GroupSlot(name)
+	if !ok {
+		return nil, fmt.Errorf("binding: unknown group %q", name)
+	}
+	sub := c.p.Group(slot).Sub
+	c.res.Groups[slot].Items = plan.GrowResults(c.res.Groups[slot].Items)
+	items := c.res.Groups[slot].Items
+	sub.ResetResult(&items[len(items)-1])
+	c.growSubs(slot, len(items))
+
+	root := c.root
+	if root == nil {
+		root = c
+	}
+	// 追加的迭代没有源文出处，全部走覆盖写入
+	item := newContext(sub, nil, &items[len(items)-1], root)
+	c.subs[slot][len(items)-1] = item
+	c.markDirty()
+	return item, nil
+}
+
+func (c *Context) growSubs(slot, n int) {
+	for len(c.subs[slot]) < n {
+		c.subs[slot] = append(c.subs[slot], nil)
+	}
+}
+
+// ---- 渲染 ----
+
+// Data 把 context 转成渲染输入。
+func (c *Context) Data(dst *plan.Data) *plan.Data {
+	if dst == nil {
+		dst = c.p.NewData()
+	}
+	n := c.p.NumSlots()
+	if cap(dst.Values) < n {
+		dst.Values = make([][]byte, n)
+	}
+	dst.Values = dst.Values[:n]
 	for i := 0; i < n; i++ {
 		raw, ok := c.RawAt(i)
 		if !ok {
-			dst[i] = nil
+			dst.Values[i] = nil
 			continue
 		}
-		dst[i] = raw
+		dst.Values[i] = raw
+	}
+
+	ng := c.p.NumGroups()
+	if cap(dst.Groups) < ng {
+		dst.Groups = make([]plan.GroupData, ng)
+	}
+	dst.Groups = dst.Groups[:ng]
+	for g := 0; g < ng; g++ {
+		name := c.p.Group(g).Name
+		count := len(c.res.Groups[g].Items)
+		dst.Groups[g].Items = dst.Groups[g].Items[:0]
+		for i := 0; i < count; i++ {
+			item, ok := c.GroupItem(name, i)
+			if !ok {
+				continue
+			}
+			dst.Groups[g].Items = plan.GrowData(dst.Groups[g].Items)
+			item.Data(&dst.Groups[g].Items[len(dst.Groups[g].Items)-1])
+		}
 	}
 	return dst
 }
@@ -193,9 +299,20 @@ func (c *Context) Missing() []string {
 			out = append(out, name)
 		}
 	}
+	for g := 0; g < c.p.NumGroups(); g++ {
+		info := c.p.Group(g)
+		for i := range c.res.Groups[g].Items {
+			if item, ok := c.GroupItem(info.Name, i); ok {
+				for _, m := range item.Missing() {
+					out = append(out, fmt.Sprintf("%s[%d].%s", info.Name, i, m))
+				}
+			}
+		}
+	}
 	return out
 }
 
 func (c *Context) String() string {
-	return fmt.Sprintf("context{slots=%d dirty=%v}", c.p.NumSlots(), c.dirty)
+	return fmt.Sprintf("context{slots=%d groups=%d dirty=%v}",
+		c.p.NumSlots(), c.p.NumGroups(), c.Dirty())
 }

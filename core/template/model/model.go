@@ -16,6 +16,10 @@ const (
 	TagJSON Tag = "json"
 	// TagExt 是扩展点。
 	TagExt Tag = "ext"
+	// TagEach 开启一个重复块，必须由 TagEnd 闭合。
+	TagEach Tag = "each"
+	// TagEnd 闭合最近的 TagEach。它是结构标记，不产生元素。
+	TagEnd Tag = "end"
 )
 
 // SupportedTags 是所有内置 tag 的集合。
@@ -24,6 +28,8 @@ var SupportedTags = map[Tag]common.Void{
 	TagRegex: common.VOID,
 	TagJSON:  common.VOID,
 	TagExt:   common.VOID,
+	TagEach:  common.VOID,
+	TagEnd:   common.VOID,
 }
 
 // Supported 报告 t 是否为受支持的 tag。

@@ -57,6 +57,21 @@ type ElementLoader interface {
 	Load(args string, nameFunc func(Tag) string) (Element, error)
 }
 
+// Block 是一个重复块：把 Body 重复若干次，迭代之间用 Separator 分隔。
+//
+// 边界确定方式与洞同理，只是抬高了一层：整个块的范围由**块之后的后继字面量**
+// 划定，块内部再按 Separator 切分成若干次迭代，每次迭代必须被 Body 完整消费。
+// 于是 T0 的思路在这里依然成立 —— 一次 bytes.Index 定终点，一次切分定迭代。
+type Block interface {
+	Element
+	// Body 返回块内的子元素序列。
+	Body() []Element
+	// Separator 是迭代之间的分隔符，不能为空。
+	Separator() string
+	// AllowEmpty 报告是否允许零次迭代。
+	AllowEmpty() bool
+}
+
 // ExtensionLoader 是 ${ext|extension=NAME,...} 的扩展注册接口。
 type ExtensionLoader interface {
 	Name() string

@@ -1,11 +1,11 @@
-// Package plan 把 Element 序列编译成扁平算子序列，并执行它。
+// Package plan 把 Element 树编译成扁平算子序列，并执行它。
 //
 // 这是整个设计的性能枢纽（见 DESIGN.md §5、§7）。要点：
 //
 //  1. Element 只是纯数据；热路径上跑的是 []Op，没有接口分发、没有闭包、没有 goroutine。
 //  2. 洞的定界符来自**后继元素** —— 所以编译必须做前瞻，不能由元素各自决定。
 //  3. 能用字面量定界就绝不用正则：bytes.Index 在 Go 里是 SIMD 加速的，
-//     实测 0.060 µs/行；而 Go 的 regexp 是 RE2，同样的活要 1.17 µs/行。
+//     实测 45 ns/行；而 Go 的 regexp 是 RE2，同样的活要 588 ns/行。
 package plan
 
 import (
@@ -37,16 +37,27 @@ const (
 	OpRegexUntil
 	// OpIsland 是自定界的结构化块（只产生 0 或 1 个候选）。
 	OpIsland
+	// OpEach 是重复块。范围由后继字面量划定，内部按分隔符切分。
+	OpEach
 )
 
 // Op 是一条扁平算子。
 type Op struct {
 	Kind   OpKind
-	Lit    []byte         // OpPrefix / OpLiteral / OpFindLit / OpRegexUntil 的定界符
+	Lit    []byte         // OpPrefix / OpLiteral / OpFindLit / OpRegexUntil / OpEach 的定界符
 	Ch     byte           // OpFindByte
-	Slot   int            // 绑定槽位；-1 表示不绑定
+	Slot   int            // 标量槽位或组槽位；-1 表示不绑定
 	Re     *regexp.Regexp // OpRegex / OpRegexUntil，已锚定到起点
 	Island model.Island   // OpIsland
+}
+
+// GroupInfo 描述一个重复块。
+type GroupInfo struct {
+	Name string
+	Sub  *Plan
+	Sep  []byte
+	// AllowEmpty 为 false 时，零次迭代视为不匹配。
+	AllowEmpty bool
 }
 
 // Tier 是模板达到的执行层级，越低越快。
@@ -59,6 +70,8 @@ const (
 	TierRegex
 	// TierIsland 含结构化岛。
 	TierIsland
+	// TierEach 含重复块。
+	TierEach
 )
 
 // String 返回层级名。
@@ -70,6 +83,8 @@ func (t Tier) String() string {
 		return "T1/regex"
 	case TierIsland:
 		return "T2/island"
+	case TierEach:
+		return "T3/each"
 	}
 	return "unknown"
 }
@@ -80,12 +95,29 @@ type Plan struct {
 	names []string
 	index map[string]int
 	tier  Tier
-	// islands[slot] 非 nil 表示该槽位是结构化岛，读取值时需要解码。
-	// 纯直通的字段永远不会走到解码。
+	// islands[slot] 非 nil 表示该标量槽位是结构化岛，读取值时需要解码。
 	islands []model.Island
+	// groups 是组槽位，与 names 是两套独立的槽位空间。
+	groups     []GroupInfo
+	groupIndex map[string]int
 }
 
-// Island 返回该槽位对应的结构化岛，非岛槽位返回 nil。
+// Ops 返回算子序列。调用方不得修改。
+func (p *Plan) Ops() []Op { return p.ops }
+
+// Names 返回标量槽位名（下标即槽位号）。
+func (p *Plan) Names() []string { return p.names }
+
+// NumSlots 返回标量槽位数量。
+func (p *Plan) NumSlots() int { return len(p.names) }
+
+// Slot 按名查标量槽位号。
+func (p *Plan) Slot(name string) (int, bool) {
+	i, ok := p.index[name]
+	return i, ok
+}
+
+// Island 返回该标量槽位对应的结构化岛，非岛槽位返回 nil。
 func (p *Plan) Island(slot int) model.Island {
 	if slot < 0 || slot >= len(p.islands) {
 		return nil
@@ -93,31 +125,37 @@ func (p *Plan) Island(slot int) model.Island {
 	return p.islands[slot]
 }
 
-// Ops 返回算子序列。调用方不得修改。
-func (p *Plan) Ops() []Op { return p.ops }
+// Groups 返回全部组信息。
+func (p *Plan) Groups() []GroupInfo { return p.groups }
 
-// Names 返回槽位名（下标即槽位号）。
-func (p *Plan) Names() []string { return p.names }
+// NumGroups 返回组槽位数量。
+func (p *Plan) NumGroups() int { return len(p.groups) }
 
-// NumSlots 返回绑定槽位数量。
-func (p *Plan) NumSlots() int { return len(p.names) }
-
-// Slot 按名查槽位号。
-func (p *Plan) Slot(name string) (int, bool) {
-	i, ok := p.index[name]
+// GroupSlot 按名查组槽位号。
+func (p *Plan) GroupSlot(name string) (int, bool) {
+	i, ok := p.groupIndex[name]
 	return i, ok
+}
+
+// Group 按槽位号取组信息。
+func (p *Plan) Group(slot int) *GroupInfo {
+	if slot < 0 || slot >= len(p.groups) {
+		return nil
+	}
+	return &p.groups[slot]
 }
 
 // Tier 返回执行层级。
 func (p *Plan) Tier() Tier { return p.tier }
 
 func (p *Plan) String() string {
-	return fmt.Sprintf("plan{tier=%s, ops=%d, slots=%d}", p.tier, len(p.ops), len(p.names))
+	return fmt.Sprintf("plan{tier=%s, ops=%d, slots=%d, groups=%d}",
+		p.tier, len(p.ops), len(p.names), len(p.groups))
 }
 
-// Compile 把 Element 序列编译成执行计划。
+// Compile 把 Element 树编译成执行计划。
 func Compile(elements []model.Element) (*Plan, error) {
-	p := &Plan{index: map[string]int{}}
+	p := &Plan{index: map[string]int{}, groupIndex: map[string]int{}}
 	consumed := make([]bool, len(elements))
 
 	slotFor := func(name string) int {
@@ -128,6 +166,12 @@ func Compile(elements []model.Element) (*Plan, error) {
 		p.names = append(p.names, name)
 		p.islands = append(p.islands, nil)
 		p.index[name] = i
+		return i
+	}
+	groupFor := func(g GroupInfo) int {
+		i := len(p.groups)
+		p.groups = append(p.groups, g)
+		p.groupIndex[g.Name] = i
 		return i
 	}
 
@@ -152,6 +196,31 @@ func Compile(elements []model.Element) (*Plan, error) {
 				kind = OpPrefix
 			}
 			p.ops = append(p.ops, Op{Kind: kind, Lit: []byte(e.Content()), Slot: -1})
+
+		case model.Block:
+			sub, err := Compile(e.Body())
+			if err != nil {
+				return nil, fmt.Errorf("each block %q: %w", e.Name(), err)
+			}
+			// 块的终止符与洞同理，来自后继字面量；没有则吃到输入结尾。
+			var term []byte
+			if lit, ok := nextLiteral(i); ok {
+				consumed[i+1] = true
+				term = []byte(lit.Content())
+			} else if i != len(elements)-1 {
+				return nil, fmt.Errorf(
+					"plan: each block %q must be followed by a literal separator or end the template; "+
+						"otherwise its extent is ambiguous", e.Name())
+			}
+			slot := groupFor(GroupInfo{
+				Name: e.Name(), Sub: sub,
+				Sep: []byte(e.Separator()), AllowEmpty: e.AllowEmpty(),
+			})
+			p.ops = append(p.ops, Op{Kind: OpEach, Slot: slot, Lit: term})
+			p.raise(TierEach)
+			if sub.tier > p.tier {
+				p.tier = sub.tier
+			}
 
 		case model.Island:
 			slot := slotFor(e.Name())

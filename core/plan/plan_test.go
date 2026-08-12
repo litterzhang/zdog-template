@@ -24,13 +24,13 @@ func compile(t *testing.T, src string) *plan.Plan {
 // parse 返回 name -> 匹配到的原文。
 func parse(t *testing.T, p *plan.Plan, input string) (map[string]string, bool) {
 	t.Helper()
-	spans := make([]plan.Span, p.NumSlots())
-	if !p.Parse([]byte(input), spans) {
+	res := p.NewResult()
+	if !p.Parse([]byte(input), res) {
 		return nil, false
 	}
 	out := map[string]string{}
 	for i, name := range p.Names() {
-		out[name] = input[spans[i].Start:spans[i].End]
+		out[name] = input[res.Spans[i].Start:res.Spans[i].End]
 	}
 	return out, true
 }
@@ -149,16 +149,16 @@ func TestLawARoundTrip(t *testing.T) {
 	for _, tc := range cases {
 		p := compile(t, tc.tmpl)
 		src := []byte(tc.input)
-		spans := make([]plan.Span, p.NumSlots())
-		if !p.Parse(src, spans) {
+		res := p.NewResult()
+		if !p.Parse(src, res) {
 			t.Errorf("%q: parse(%q) failed", tc.tmpl, tc.input)
 			continue
 		}
-		values := make([][]byte, len(spans))
-		for i, s := range spans {
-			values[i] = src[s.Start:s.End]
+		data := p.NewData()
+		for i, s := range res.Spans {
+			data.Values[i] = src[s.Start:s.End]
 		}
-		out, ok := p.Format(nil, values)
+		out, ok := p.Format(nil, data)
 		if !ok {
 			t.Errorf("%q: format failed", tc.tmpl)
 			continue
@@ -174,9 +174,9 @@ func TestPlanConcurrentSafe(t *testing.T) {
 	done := make(chan bool, 8)
 	for i := 0; i < 8; i++ {
 		go func() {
-			spans := make([]plan.Span, p.NumSlots())
+			res := p.NewResult()
 			for k := 0; k < 500; k++ {
-				if !p.Parse([]byte("[t] L"), spans) {
+				if !p.Parse([]byte("[t] L"), res) {
 					done <- false
 					return
 				}

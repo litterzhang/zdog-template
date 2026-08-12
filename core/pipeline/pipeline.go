@@ -46,10 +46,9 @@ func ParseConfig(data []byte) (*Config, error) {
 
 // Pipeline 是一条已编译的流水线。不可变，可被多 goroutine 并发使用。
 type Pipeline struct {
-	src *engine.Engine
-	tgt *engine.Engine
-	// route[targetSlot] = sourceSlot
-	route []int
+	src   *engine.Engine
+	tgt   *engine.Engine
+	route route
 }
 
 // Compile 编译一条流水线。
@@ -67,21 +66,11 @@ func Compile(cfg *Config) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline: target template: %w", err)
 	}
 
-	route := make([]int, tgt.Plan().NumSlots())
-	for i, tName := range tgt.Names() {
-		sName := tName
-		if m, ok := cfg.Mapping[tName]; ok {
-			sName = m
-		}
-		slot, ok := src.Plan().Slot(sName)
-		if !ok {
-			return nil, fmt.Errorf(
-				"pipeline: target field %q maps to unknown source field %q (available: %v)",
-				tName, sName, src.Names())
-		}
-		route[i] = slot
+	r, err := buildRoute(src.Plan(), tgt.Plan(), cfg.Mapping, "")
+	if err != nil {
+		return nil, err
 	}
-	return &Pipeline{src: src, tgt: tgt, route: route}, nil
+	return &Pipeline{src: src, tgt: tgt, route: r}, nil
 }
 
 // Source 返回源模板引擎。
@@ -92,32 +81,27 @@ func (p *Pipeline) Target() *engine.Engine { return p.tgt }
 
 // Scratch 是可复用的每次调用工作区，避免热路径分配。
 type Scratch struct {
-	spans  []plan.Span
-	values [][]byte
+	res  *plan.Result
+	data *plan.Data
 }
 
 // NewScratch 为该流水线分配工作区。每个 goroutine 应持有自己的实例。
 func (p *Pipeline) NewScratch() *Scratch {
 	return &Scratch{
-		spans:  make([]plan.Span, p.src.Plan().NumSlots()),
-		values: make([][]byte, p.tgt.Plan().NumSlots()),
+		res:  p.src.Plan().NewResult(),
+		data: p.tgt.Plan().NewData(),
 	}
 }
 
 // TransformLine 转换单行，结果追加到 dst。不匹配时返回 ok=false。
 func (p *Pipeline) TransformLine(dst, line []byte, s *Scratch) ([]byte, bool) {
-	if !p.src.ParseInto(line, s.spans) {
+	if !p.src.ParseInto(line, s.res) {
 		return dst, false
 	}
-	for i, srcSlot := range p.route {
-		sp := s.spans[srcSlot]
-		if !sp.Valid() {
-			return dst, false
-		}
-		s.values[i] = line[sp.Start:sp.End]
+	if !p.route.fill(s.data, s.res, line) {
+		return dst, false
 	}
-	out, ok := p.tgt.Plan().Format(dst, s.values)
-	return out, ok
+	return p.tgt.Plan().Format(dst, s.data)
 }
 
 // Transform 批量转换：输入按 \n 分行，每行转换后以 \n 结尾写入 dst。

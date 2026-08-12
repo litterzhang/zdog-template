@@ -1,0 +1,19 @@
+{
+  "name": "each-repeat-block",
+  "description": "重复块 ${each}：单条记录内的重复子结构。块范围由后继字面量划定，块内按 sep 切分，每段必须被子计划完整消费。同时验证组到组的递归路由。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] items=${each|name=items,sep=;}${id}:${qty}${end}",
+    "mapping": {
+      "when": "ts",
+      "rows": "items",
+      "sku": "id",
+      "n": "qty"
+    },
+    "target": "${when} => ${each|name=rows,sep=' | '}${sku} x${n}${end}"
+  },
+  "input": "[T1] items=a:1;b:2;c:3",
+  "output": "T1 => a x1 | b x2 | c x3\n",
+  "tier": "T3/each",
+  "laws": ["A"]
+}

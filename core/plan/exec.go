@@ -16,18 +16,15 @@ func (s Span) Valid() bool { return s.End >= s.Start && s.Start >= 0 }
 // NoSpan 表示未填充。
 var NoSpan = Span{Start: -1, End: -1}
 
-// Parse 在 src 上执行计划，把各槽位的跨度写进 spans。
+// Parse 在 src 上执行计划，把结果写进 r。
 //
-// spans 必须至少有 NumSlots() 个元素，由调用方复用以避免热路径分配。
+// r 由调用方复用以避免热路径分配。无重复块的模板全程零分配。
 // 无全局状态，同一个 Plan 可被多 goroutine 并发调用。
-func (p *Plan) Parse(src []byte, spans []Span) bool {
-	if len(spans) < len(p.names) {
-		return false
-	}
-	for i := range spans[:len(p.names)] {
-		spans[i] = NoSpan
-	}
-
+//
+// 注意跨度是**相对 src 起点**的偏移；重复块内各次迭代的跨度相对该迭代自身的
+// 字节片段，因此读取时必须逐层带上父级的基址（见 binding.Context）。
+func (p *Plan) Parse(src []byte, r *Result) bool {
+	p.ensure(r)
 	pos := 0
 	for k := range p.ops {
 		op := &p.ops[k]
@@ -44,7 +41,7 @@ func (p *Plan) Parse(src []byte, spans []Span) bool {
 			if j < 0 {
 				return false
 			}
-			spans[op.Slot] = Span{int32(pos), int32(pos + j)}
+			r.Spans[op.Slot] = Span{int32(pos), int32(pos + j)}
 			pos += j + 1
 
 		case OpFindLit:
@@ -52,11 +49,11 @@ func (p *Plan) Parse(src []byte, spans []Span) bool {
 			if j < 0 {
 				return false
 			}
-			spans[op.Slot] = Span{int32(pos), int32(pos + j)}
+			r.Spans[op.Slot] = Span{int32(pos), int32(pos + j)}
 			pos += j + len(op.Lit)
 
 		case OpRest:
-			spans[op.Slot] = Span{int32(pos), int32(len(src))}
+			r.Spans[op.Slot] = Span{int32(pos), int32(len(src))}
 			pos = len(src)
 
 		case OpRegex:
@@ -64,17 +61,17 @@ func (p *Plan) Parse(src []byte, spans []Span) bool {
 			if loc == nil {
 				return false
 			}
-			spans[op.Slot] = Span{int32(pos), int32(pos + loc[1])}
+			r.Spans[op.Slot] = Span{int32(pos), int32(pos + loc[1])}
 			pos += loc[1]
 
 		case OpRegexUntil:
 			// best-match：在定界符的各次出现中取**最早的、且正则能完整覆盖跨度**的那个。
 			// 例：模板 ${re|expr=\d+}345 对 "123345" 应得到 "123" 而非 "123345"。
-			end, ok := p.matchUntil(src, pos, op)
+			end, ok := matchUntil(src, pos, op)
 			if !ok {
 				return false
 			}
-			spans[op.Slot] = Span{int32(pos), int32(end)}
+			r.Spans[op.Slot] = Span{int32(pos), int32(end)}
 			pos = end + len(op.Lit)
 
 		case OpIsland:
@@ -82,8 +79,26 @@ func (p *Plan) Parse(src []byte, spans []Span) bool {
 			if !ok {
 				return false
 			}
-			spans[op.Slot] = Span{int32(pos), int32(end)}
+			r.Spans[op.Slot] = Span{int32(pos), int32(end)}
 			pos = end
+
+		case OpEach:
+			g := &p.groups[op.Slot]
+			// 块的范围由后继字面量划定，与洞的定界同理，只是抬高了一层。
+			regionEnd := len(src)
+			next := len(src)
+			if len(op.Lit) > 0 {
+				j := bytes.Index(src[pos:], op.Lit)
+				if j < 0 {
+					return false
+				}
+				regionEnd = pos + j
+				next = regionEnd + len(op.Lit)
+			}
+			if !parseGroup(g, src[pos:regionEnd], &r.Groups[op.Slot], r.Base+int32(pos)) {
+				return false
+			}
+			pos = next
 		}
 	}
 	// 模板必须完整覆盖输入 —— 这是定律 A 的前提：
@@ -91,8 +106,59 @@ func (p *Plan) Parse(src []byte, spans []Span) bool {
 	return pos == len(src)
 }
 
+// parseGroup 把 region 按分隔符切成若干次迭代，每次迭代必须被子计划完整消费。
+//
+// 切分不是无脑 Split：分隔符可能出现在某次迭代的内容里，因此对每个候选边界
+// 都尝试用子计划解析，失败则延伸到下一个分隔符。这与 OpRegexUntil 的 best-match
+// 是同一个思路 —— 边界由"能否被后续消费"来裁决。
+func parseGroup(g *GroupInfo, region []byte, out *GroupResult, base int32) bool {
+	out.Items = out.Items[:0]
+	if len(region) == 0 {
+		return g.AllowEmpty
+	}
+	pos := 0
+	for {
+		searchFrom := pos
+		matched := false
+		for {
+			j := bytes.Index(region[searchFrom:], g.Sep)
+			last := j < 0
+			var item []byte
+			var nextPos int
+			if last {
+				item, nextPos = region[pos:], -1
+			} else {
+				item, nextPos = region[pos:searchFrom+j], searchFrom+j+len(g.Sep)
+			}
+
+			out.Items = GrowResults(out.Items)
+			ir := &out.Items[len(out.Items)-1]
+			ir.Base = base + int32(pos)
+			if g.Sub.Parse(item, ir) {
+				matched = true
+				if last {
+					return true
+				}
+				pos = nextPos
+				break
+			}
+			out.Items = out.Items[:len(out.Items)-1]
+			if last {
+				return false
+			}
+			searchFrom = searchFrom + j + 1
+			if searchFrom > len(region) {
+				return false
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+}
+
 // matchUntil 实现 OpRegexUntil 的 best-match 搜索。
-func (p *Plan) matchUntil(src []byte, pos int, op *Op) (end int, ok bool) {
+func matchUntil(src []byte, pos int, op *Op) (end int, ok bool) {
 	rest := src[pos:]
 	off := 0
 	for {
@@ -111,12 +177,12 @@ func (p *Plan) matchUntil(src []byte, pos int, op *Op) (end int, ok bool) {
 	}
 }
 
-// Format 按计划把各槽位的值渲染成文本，追加到 dst。
+// Format 按计划把数据渲染成文本，追加到 dst。
 //
-// values[slot] 为该槽位要写出的字节。定律 A 的 replay 快路径由上层
-// （engine）负责：未修改时直接返回原文，根本不会走到这里。
-func (p *Plan) Format(dst []byte, values [][]byte) ([]byte, bool) {
-	if len(values) < len(p.names) {
+// 定律 A 的 replay 快路径由上层（engine）负责：未修改时直接返回原文，
+// 根本不会走到这里。
+func (p *Plan) Format(dst []byte, d *Data) ([]byte, bool) {
+	if len(d.Values) < len(p.names) || len(d.Groups) < len(p.groups) {
 		return dst, false
 	}
 	for k := range p.ops {
@@ -124,8 +190,26 @@ func (p *Plan) Format(dst []byte, values [][]byte) ([]byte, bool) {
 		switch op.Kind {
 		case OpPrefix, OpLiteral:
 			dst = append(dst, op.Lit...)
+
+		case OpEach:
+			g := &p.groups[op.Slot]
+			items := d.Groups[op.Slot].Items
+			if len(items) == 0 && !g.AllowEmpty {
+				return dst, false
+			}
+			for i := range items {
+				if i > 0 {
+					dst = append(dst, g.Sep...)
+				}
+				var ok bool
+				if dst, ok = g.Sub.Format(dst, &items[i]); !ok {
+					return dst, false
+				}
+			}
+			dst = append(dst, op.Lit...) // 块的终止字面量
+
 		default:
-			v := values[op.Slot]
+			v := d.Values[op.Slot]
 			if v == nil {
 				return dst, false
 			}

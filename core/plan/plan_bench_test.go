@@ -27,12 +27,12 @@ func mustPlan(b *testing.B, src string) *plan.Plan {
 func BenchmarkParseTierLiteral(b *testing.B) {
 	p := mustPlan(b, "[${ts}] ${lv} ${msg} payload=${payload}")
 	src := []byte(benchLine)
-	spans := make([]plan.Span, p.NumSlots())
+	res := p.NewResult()
 	b.SetBytes(int64(len(src)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !p.Parse(src, spans) {
+		if !p.Parse(src, res) {
 			b.Fatal("parse failed")
 		}
 	}
@@ -42,12 +42,12 @@ func BenchmarkParseTierLiteral(b *testing.B) {
 func BenchmarkParseTierRegex(b *testing.B) {
 	p := mustPlan(b, `[${re|name=ts,expr=[^\]]+}] ${re|name=lv,expr=\w+} ${msg}`)
 	src := []byte(`[2026-08-12T01:00:00Z] ERROR disk full`)
-	spans := make([]plan.Span, p.NumSlots())
+	res := p.NewResult()
 	b.SetBytes(int64(len(src)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !p.Parse(src, spans) {
+		if !p.Parse(src, res) {
 			b.Fatal("parse failed")
 		}
 	}
@@ -56,12 +56,12 @@ func BenchmarkParseTierRegex(b *testing.B) {
 func BenchmarkParseTierIsland(b *testing.B) {
 	p := mustPlan(b, "[${ts}] ${lv} ${msg} payload=${json|name=payload}")
 	src := []byte(benchLine)
-	spans := make([]plan.Span, p.NumSlots())
+	res := p.NewResult()
 	b.SetBytes(int64(len(src)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !p.Parse(src, spans) {
+		if !p.Parse(src, res) {
 			b.Fatal("parse failed")
 		}
 	}
@@ -71,19 +71,19 @@ func BenchmarkParseTierIsland(b *testing.B) {
 func BenchmarkParseFormatRoundTrip(b *testing.B) {
 	p := mustPlan(b, "[${ts}] ${lv} ${msg} payload=${payload}")
 	src := []byte(benchLine)
-	spans := make([]plan.Span, p.NumSlots())
-	values := make([][]byte, p.NumSlots())
+	res := p.NewResult()
+	data := p.NewData()
 	out := make([]byte, 0, len(src))
 	b.SetBytes(int64(len(src)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !p.Parse(src, spans) {
+		if !p.Parse(src, res) {
 			b.Fatal("parse failed")
 		}
-		for k, s := range spans {
-			values[k] = src[s.Start:s.End]
+		for k, s := range res.Spans {
+			data.Values[k] = src[s.Start:s.End]
 		}
-		out, _ = p.Format(out[:0], values)
+		out, _ = p.Format(out[:0], data)
 	}
 }
