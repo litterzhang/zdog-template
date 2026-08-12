@@ -42,11 +42,15 @@ py-build: build ## 构建 Python wheel（先把 .so 拷进包内）
 	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztpl/
 	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build
 
+# 迭代数要够大：200x 在这类 ns 级基准上主要测的是预热噪声。
 bench: build ## 性能门禁
-	@echo "--- Go core ---"
-	@$(GO) test -run=XXX -bench=. -benchtime=200x ./core/plan/ ./core/pipeline/ \
+	@echo "--- Go core (parse) ---"
+	@$(GO) test -run=XXX -bench=. -benchtime=1000000x ./core/plan/ \
 		| grep -vE '^(goos|goarch|pkg|cpu)'
-	@echo "\n--- Python SDK ---"
+	@echo "--- Go core (pipeline) ---"
+	@$(GO) test -run=XXX -bench=. -benchtime=3000x ./core/pipeline/ \
+		| grep -vE '^(goos|goarch|pkg|cpu)'
+	@echo "--- Python SDK ---"
 	@$(PYTHON) bench/bench_sdk.py
 
 clean: ## 清理构建产物

@@ -35,10 +35,15 @@ def pure_python():
     )
 
 
-def bench(label, fn, reps):
+def bench(label, fn, reps, trials=5):
+    """取多轮最小值。
+
+    微基准里噪声只会**增加**耗时（调度抢占、缓存失效、频率波动），
+    因此最小值是对真实成本最稳的估计；单次计时在共享机器上能差 20%。
+    """
     fn()
-    total = timeit.timeit(fn, number=reps)
-    ns_per_line = total / reps / NLINES * 1e9
+    best = min(timeit.repeat(fn, number=reps, repeat=trials)) / reps
+    ns_per_line = best / NLINES * 1e9
     mlines = 1000 / ns_per_line
     print(f"  {label:<38} {ns_per_line:8.2f} ns/行   {mlines:6.2f} M行/秒")
     return ns_per_line
@@ -61,8 +66,8 @@ def main() -> int:
     print(f"正确性: {len(got)} 行与纯 Python 参考实现逐行一致  ✓\n")
 
     print(f"=== 批量 {NLINES} 行, 每行均摊 ===")
-    py = bench("[纯 Python] finditer + f-string", pure_python, 200)
-    sdk = bench("[Python SDK -> Go .so] transform", lambda: tpl.transform(BUF), 200)
+    py = bench("[纯 Python] finditer + f-string", pure_python, 100)
+    sdk = bench("[Python SDK -> Go .so] transform", lambda: tpl.transform(BUF), 300)
     tpl.close()
 
     speedup = py / sdk
