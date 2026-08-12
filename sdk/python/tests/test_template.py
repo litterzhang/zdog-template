@@ -8,7 +8,7 @@ from ztpl import Template, ZtplCompileError, ZtplError, abi_version, lib_path
 
 
 def test_abi_version():
-    assert abi_version() == 2
+    assert abi_version() == 3
 
 
 def test_lib_path_exists():
@@ -247,3 +247,49 @@ def test_inspect_reports_backtrack():
 def test_inspect_without_target():
     with Template("[${a}]") as t:
         assert "target" not in t.inspect()
+
+
+# —— 出错的行不再静默跳过（ABI v3）——
+
+def test_failed_is_distinct_from_skipped():
+    """岛内容非法 -> failed；整行不匹配 -> skipped。两者必须分得开。"""
+    with Template('[${a}] ${json|name=p}') as t:
+        res = t.parse(b'[x] {"ok":1}\n[y] {"bad":}\nnot matching at all')
+        assert res.ok == 1        # 第 1 行成功
+        assert res.failed == 1    # 第 2 行括号配对但内容非法
+        assert res.skipped == 1   # 第 3 行压根不匹配
+        assert res.total == 3
+
+
+def test_failed_lines_report_reasons():
+    with Template('[${a}] ${json|name=p}') as t:
+        res = t.parse(b'[y] {"bad":}')
+        assert res.failed == 1
+        assert res.errors, "出错的行必须给出原因"
+        assert "not valid JSON" in res.errors[0]
+        assert "line 1" in res.errors[0]
+
+
+def test_format_reports_bad_input():
+    with Template("[${a}] ${b}", target="${b}/${a}") as t:
+        res = t.format(b'{"a":"x","b":"y"}\nthis is not json')
+        assert res.ok == 1
+        assert res.failed == 1
+        assert any("not valid JSON" in e for e in res.errors)
+
+
+def test_no_errors_when_all_good():
+    with Template("[${a}]") as t:
+        res = t.parse(b"[x]\n[y]")
+        assert res.failed == 0
+        assert res.errors == ()
+
+
+# —— parse 不再把岛解码后再序列化回去 ——
+
+def test_parse_preserves_island_verbatim():
+    """岛原样嵌入：原文的数字写法与键序都不该被改写。"""
+    raw = '{"z":1,"a":1.50,"big":10000000000000000000}'
+    with Template("[${ts}] ${json|name=p}") as t:
+        out = t.parse(f"[T1] {raw}".encode()).text()
+    assert raw in out, f"岛应原样嵌入，实际: {out}"

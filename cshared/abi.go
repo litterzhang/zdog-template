@@ -18,6 +18,7 @@ package main
 import "C"
 
 import (
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -28,7 +29,7 @@ import (
 // 它与 pipeline.ConfigVersion（配置 JSON 的 schema 版本）是**不同**的契约：
 // 加一个 ABI 函数不影响配置格式，改配置格式也不一定动 ABI。混在一起会让
 // 宿主 SDK 被迫为无关的变更升级。
-const AbiVersion = 2
+const AbiVersion = 3
 
 // 返回码。n >= 0 表示写入的字节数。
 const (
@@ -38,10 +39,14 @@ const (
 	errArg         = -4 // 参数非法
 )
 
-// statsLen 是 stats 数组的长度：[matched, total, needed]。
-const statsLen = 3
+// statsLen 是 stats 数组的长度：[ok, total, needed, failed]。
+//
+// failed 与 (total - ok - failed) 是两回事：前者是"本该处理却出错了"，
+// 后者是"本来就不匹配模板"。早先只有前三个字段，两种情况分不开。
+const statsLen = 4
 
 type handle struct {
+	mu  sync.Mutex
 	pl  *pipeline.Pipeline
 	err string
 	// 复用的工作区。句柄可被并发调用，因此走 Pool 而非固定字段。
@@ -122,59 +127,19 @@ func ZtplCompile(cfgPtr *C.uint8_t, cfgLen C.int32_t) C.int64_t {
 	return C.int64_t(-store(&handle{err: err.Error()}))
 }
 
-// ZtplTransform 批量转换。
+// ZtplTransform 批量转换：源文本 -> 目标文本。
 //
-// stats 必须指向一个长度 >= 3 的 int32 数组，返回 [matched, total, needed]。
+// stats 必须指向长度 >= 4 的 int32 数组，返回 [ok, total, needed, failed]。
 // 缓冲不足时返回 errShortBuffer，此时 stats[2] 为所需容量，调用方扩容后重试。
 //
 //export ZtplTransform
-func ZtplTransform(id C.int64_t, inPtr *C.uint8_t, inLen C.int32_t,
-	outPtr *C.uint8_t, outCap C.int32_t, statsPtr *C.int32_t) C.int32_t {
-
-	h := lookup(int64(id))
-	if h == nil || h.pl == nil {
-		return C.int32_t(errHandle)
-	}
-	stats := is32(statsPtr, statsLen)
-	if stats == nil {
-		return C.int32_t(errArg)
-	}
-	in := bs(inPtr, inLen)
-
-	w := h.get()
-	defer h.put(w)
-
-	out, matched, total := h.pl.Transform(w.buf[:0], in, w.scratch)
-	w.buf = out // 保留扩容后的容量供后续复用
-
-	stats[0], stats[1], stats[2] = int32(matched), int32(total), int32(len(out))
-	if len(out) > int(outCap) {
-		return C.int32_t(errShortBuffer)
-	}
-	if len(out) > 0 {
-		copy(bs(outPtr, outCap), out)
-	}
-	return C.int32_t(len(out))
-}
-
-// ZtplLastError 取出句柄上的最近一次错误信息。
-// 缓冲不足时返回负的所需长度。
-//
-//export ZtplLastError
-func ZtplLastError(id C.int64_t, outPtr *C.uint8_t, outCap C.int32_t) C.int32_t {
-	h := lookup(int64(id))
-	if h == nil {
-		return C.int32_t(errHandle)
-	}
-	msg := []byte(h.err)
-	if len(msg) == 0 {
-		return 0
-	}
-	dst := bs(outPtr, outCap)
-	if len(msg) > len(dst) {
-		return C.int32_t(-len(msg))
-	}
-	return C.int32_t(copy(dst, msg))
+func ZtplTransform(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
+	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
+	return runOp(id, in, inLen, out, outCap, stats,
+		func(h *handle, w *work, b []byte) ([]byte, pipeline.BatchStats) {
+			res, matched, total := h.pl.Transform(w.buf[:0], b, w.scratch)
+			return res, pipeline.BatchStats{OK: matched, Total: total}
+		})
 }
 
 // runOp 是四个 NDJSON 类入口的公共骨架：取句柄、借工作区、写回缓冲。
@@ -182,7 +147,7 @@ func ZtplLastError(id C.int64_t, outPtr *C.uint8_t, outCap C.int32_t) C.int32_t 
 // 宿主 SDK 因此可以共用同一套包装代码。
 func runOp(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 	out *C.uint8_t, outCap C.int32_t, statsPtr *C.int32_t,
-	fn func(h *handle, w *work, in []byte) (res []byte, a, b int)) C.int32_t {
+	fn func(h *handle, w *work, in []byte) ([]byte, pipeline.BatchStats)) C.int32_t {
 
 	h := lookup(int64(id))
 	if h == nil || h.pl == nil {
@@ -195,10 +160,20 @@ func runOp(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 	w := h.get()
 	defer h.put(w)
 
-	res, a, b := fn(h, w, bs(in, inLen))
+	res, st := fn(h, w, bs(in, inLen))
 	w.buf = res
 
-	stats[0], stats[1], stats[2] = int32(a), int32(b), int32(len(res))
+	// 诊断信息挂到句柄上，供 ZtplLastError 取用 —— 出错的行不再无声无息。
+	h.mu.Lock()
+	if len(st.Errors) > 0 {
+		h.err = strings.Join(st.Errors, "\n")
+	} else {
+		h.err = ""
+	}
+	h.mu.Unlock()
+
+	stats[0], stats[1] = int32(st.OK), int32(st.Total)
+	stats[2], stats[3] = int32(len(res)), int32(st.Failed)
 	if len(res) > int(outCap) {
 		return C.int32_t(errShortBuffer)
 	}
@@ -209,37 +184,37 @@ func runOp(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 }
 
 // ZtplParse 把每行解析成一个 JSON 对象，按 NDJSON 输出。
-// stats = [matched, total, needed]。
+// stats = [ok, total, needed, failed]。
 //
 //export ZtplParse
 func ZtplParse(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
 	return runOp(id, in, inLen, out, outCap, stats,
-		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+		func(h *handle, w *work, b []byte) ([]byte, pipeline.BatchStats) {
 			return h.pl.ParseJSON(w.buf[:0], b, w.scratch)
 		})
 }
 
 // ZtplFormat 把 NDJSON 的每一行按目标模板渲染成文本。
-// stats = [rendered, total, needed]。
+// stats = [ok, total, needed, failed]。
 //
 //export ZtplFormat
 func ZtplFormat(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
 	return runOp(id, in, inLen, out, outCap, stats,
-		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+		func(h *handle, w *work, b []byte) ([]byte, pipeline.BatchStats) {
 			return h.pl.FormatJSON(w.buf[:0], b, w.scratch)
 		})
 }
 
 // ZtplVerify 逐行校验定律 A 与歧义，输出 NDJSON 报告。
-// stats = [bad, total, needed]。
+// stats = [ok, total, needed, failed]。
 //
 //export ZtplVerify
 func ZtplVerify(id C.int64_t, in *C.uint8_t, inLen C.int32_t,
 	out *C.uint8_t, outCap C.int32_t, stats *C.int32_t) C.int32_t {
 	return runOp(id, in, inLen, out, outCap, stats,
-		func(h *handle, w *work, b []byte) ([]byte, int, int) {
+		func(h *handle, w *work, b []byte) ([]byte, pipeline.BatchStats) {
 			return h.pl.VerifyJSON(w.buf[:0], b)
 		})
 }
@@ -263,6 +238,30 @@ func ZtplInspect(id C.int64_t, out *C.uint8_t, outCap C.int32_t) C.int32_t {
 		return C.int32_t(-len(b))
 	}
 	return C.int32_t(copy(dst, b))
+}
+
+// ZtplLastError 取出句柄上的最近一次诊断信息。
+//
+// 编译失败时是编译错误；批量操作之后是那一批里出错行的原因（最多
+// MaxReportedErrors 条，换行分隔）。缓冲不足时返回负的所需长度。
+//
+//export ZtplLastError
+func ZtplLastError(id C.int64_t, outPtr *C.uint8_t, outCap C.int32_t) C.int32_t {
+	h := lookup(int64(id))
+	if h == nil {
+		return C.int32_t(errHandle)
+	}
+	h.mu.Lock()
+	msg := []byte(h.err)
+	h.mu.Unlock()
+	if len(msg) == 0 {
+		return 0
+	}
+	dst := bs(outPtr, outCap)
+	if len(msg) > len(dst) {
+		return C.int32_t(-len(msg))
+	}
+	return C.int32_t(copy(dst, msg))
 }
 
 //export ZtplRelease

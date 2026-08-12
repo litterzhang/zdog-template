@@ -552,10 +552,11 @@ Go 用户直接 `import core/`，不走 `.so`。
 
 | 限制 | 影响 | 规避 |
 |---|---|---|
-| **`parse` 急切解码所有岛** | `contextToMap` 对每个字段调 `Value()`，岛全部解码。实测 **5047 ns/行 vs `transform` 惰性路径的 157 ns/行（32 倍）** | 只要最终文本就用 `transform`；`parse` 用于调试与小批量 |
-| **错误行被静默跳过** | 岛解码失败、JSON 非法、渲染失败都只是 `matched < total`，**不区分"不匹配"与"出错"** | 用 `verify` 拿逐行诊断；它是唯一会报原因的入口 |
+| ~~`parse` 急切解码所有岛~~ | ✅ **已修**：岛原文原样嵌入，5047 → 796 ns/行（6.3 倍） | — |
+| ~~错误行被静默跳过~~ | ✅ **已修**：`stats[3]` 给出 failed 计数，原因经 `LastError` 回传 | — |
+| **`parse` 仍比 `transform` 慢 4.6 倍** | 796 vs 174 ns/行。大头是 `json.Valid`（~450 ns）：非 strict 的岛在 Scan 只查了括号配对，直接拼进输出会毁掉整行 NDJSON | 只要最终文本就用 `transform`；`parse` 面向调试与中小批量 |
 | **`format` 不复用 Scratch** | 每行 `NewContext()`，分配 4 个切片 | 非热路径，暂不优化 |
-| **ABI 无逐行错误详情** | `stats` 只有 `[a, b, needed]` 三个整数 | 同上，走 `verify` |
+| **只回报前 10 条错误原因** | 计数不受限，但原因最多 `MaxReportedErrors` 条 | 逐行诊断用 `verify` |
 
 ### 12.6 SDK 与 CLI
 

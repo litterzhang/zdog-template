@@ -35,7 +35,7 @@ def cmd_parse(args) -> int:
         for rec in res.records():
             print(term.pretty_json(rec))
 
-    _report(res.matched, res.total, "parsed")
+    _report(res, "parsed")
     return 0 if res.matched else 1
 
 
@@ -46,7 +46,7 @@ def cmd_convert(args) -> int:
     with open_template(cfg, need_target=True) as tpl:
         res = tpl.transform(data)
     sys.stdout.buffer.write(res.output)
-    _report(res.matched, res.total, "converted")
+    _report(res, "converted")
     return 0 if res.matched else 1
 
 
@@ -57,7 +57,7 @@ def cmd_format(args) -> int:
     with open_template(cfg, need_target=True) as tpl:
         res = tpl.format(data)
     sys.stdout.buffer.write(res.output)
-    _report(res.rendered, res.total, "rendered")
+    _report(res, "rendered")
     return 0 if res.rendered else 1
 
 
@@ -206,11 +206,25 @@ def _bool_desc(v: bool) -> str:
     return term.green("no")
 
 
-def _report(ok: int, total: int, verb: str) -> None:
-    if total == 0:
+def _report(res, verb: str) -> None:
+    """Summarize to stderr, keeping stdout clean for pipes.
+
+    Skipped and failed are reported separately: "skipped" means the line did
+    not match the template, "failed" means it should have worked but didn't.
+    Conflating them leaves you guessing whether the data or the template is
+    at fault.
+    """
+    if res.total == 0:
         term.warn("input is empty")
         return
-    msg = f"{verb} {ok}/{total} line(s)"
-    if ok < total:
-        msg += f", {total - ok} skipped"
+    msg = f"{verb} {res.ok}/{res.total} line(s)"
+    if res.skipped:
+        msg += f", {res.skipped} skipped (no match)"
+    if res.failed:
+        msg += f", {res.failed} failed"
     term.note(msg)
+
+    for e in res.errors:
+        print(f"  {term.red('failed')}: {e}", file=sys.stderr)
+    if res.failed > len(res.errors):
+        term.note(f"  …and {res.failed - len(res.errors)} more failure(s)")

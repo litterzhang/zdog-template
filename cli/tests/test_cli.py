@@ -173,7 +173,7 @@ def test_version(capsys):
     code, out, _ = run(capsys, "--version")
     assert code == 0
     assert "ztpl-cli" in out
-    assert "ABI v2" in out
+    assert "ABI v3" in out
 
 
 def test_help_without_command(capsys):

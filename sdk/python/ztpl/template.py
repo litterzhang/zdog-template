@@ -26,30 +26,29 @@ __all__ = [
 class Result:
     """一次批量操作的结果。
 
-    ``a`` / ``b`` 的含义随操作而变：transform 与 parse 是 (matched, total)，
-    format 是 (rendered, total)，verify 是 (bad, total)。
-    下面的具名属性给出各自的可读别名。
+    ``failed`` 与 ``skipped`` 是**两回事**：前者是"这行本该处理却出错了"
+    （岛不是合法 JSON、渲染失败……），后者是"这行本来就不匹配模板"。
+    ``errors`` 给出前若干条出错原因。
     """
 
     output: bytes
-    a: int
-    b: int
+    ok: int
+    total: int
+    failed: int = 0
+    errors: tuple = ()
 
     @property
     def matched(self) -> int:
-        return self.a
+        return self.ok
 
     @property
     def rendered(self) -> int:
-        return self.a
-
-    @property
-    def total(self) -> int:
-        return self.b
+        return self.ok
 
     @property
     def skipped(self) -> int:
-        return self.b - self.a
+        """既没成功也没出错 —— 就是不匹配模板。"""
+        return self.total - self.ok - self.failed
 
     def text(self, encoding: str = "utf-8") -> str:
         return self.output.decode(encoding)
@@ -179,7 +178,7 @@ class Template:
         """逐行校验 round-trip 定律 A 与歧义。"""
         res = self._batch(self._lib.ZtplVerify, data)
         problems = [r for r in res.records() if not r.get("ok", True)]
-        return VerifyReport(total=res.total, bad=res.a, problems=problems)
+        return VerifyReport(total=res.total, bad=res.failed, problems=problems)
 
     # —— 便利包装 ——
 
@@ -234,10 +233,18 @@ class Template:
         if n < 0:
             raise ZtplError(self._last_error(self._h) or f"call failed (code={n})")
 
+        failed = self._stats[3]
+        errors: tuple = ()
+        if failed:
+            # 出错的行不再无声无息 —— 原因挂在句柄上，这里取回来。
+            msg = self._last_error(self._h)
+            errors = tuple(msg.split("\n")) if msg else ()
+
         # 用 string_at 而非 self._buf.raw[:n]：.raw 会先把**整个**缓冲
         # 物化成 bytes 再切片，代价是 O(buffer_size) 而非 O(n)。
         return Result(output=ctypes.string_at(self._buf, n),
-                      a=self._stats[0], b=self._stats[1])
+                      ok=self._stats[0], total=self._stats[1],
+                      failed=failed, errors=errors)
 
     def _call(self, fn, data: bytes) -> int:
         return fn(self._h, data, len(data), self._buf, len(self._buf), self._stats)

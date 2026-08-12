@@ -14,7 +14,7 @@ from pathlib import Path
 #   ABI_VERSION    —— C 函数签名的契约，加函数就要升
 #   CONFIG_VERSION —— 配置 JSON 的 schema，只有不兼容变更才升
 # （target 由必填变可选属于向后兼容，因此 CONFIG_VERSION 保持 1）
-ABI_VERSION = 2
+ABI_VERSION = 3
 CONFIG_VERSION = 1
 
 # 返回码，与 cshared/abi.go 保持一致
@@ -23,7 +23,7 @@ E_HANDLE = -2
 E_CONFIG = -3
 E_ARG = -4
 
-_STATS_LEN = 3  # [matched, total, needed]
+_STATS_LEN = 4  # [ok, total, needed, failed]
 
 _SO_NAMES = {
     "linux": "libztpl.so",

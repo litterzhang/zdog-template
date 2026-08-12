@@ -1,0 +1,13 @@
+{
+  "name": "island-emitted-verbatim",
+  "description": "结构化岛的原文在 parse 输出里原样嵌入，不做「解码成 map 再序列化回去」的往返。这既是 6.3 倍的性能来源，也保住了原文的数字写法（1.50 不变成 1.5，大整数不变成科学计数法）与键序。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${json|name=p}",
+    "target": "${ts} ${p}"
+  },
+  "input": "[T1] {\"z\":1,\"a\":1.50,\"big\":10000000000000000000}",
+  "output": "T1 {\"z\":1,\"a\":1.50,\"big\":10000000000000000000}\n",
+  "tier": "T2/island",
+  "laws": ["A"]
+}
