@@ -262,7 +262,7 @@ func (r *route) fill(d *plan.Data, res *plan.Result, src []byte, s *Scratch, p *
 			d.Values[i] = src[sp.Start:sp.End]
 			continue
 		}
-		v, err := mapping.Eval(ss.expr, &s.env)
+		v, err := s.eval.Eval(ss.expr, &s.env)
 		if err != nil {
 			return false
 		}
@@ -358,7 +358,7 @@ func (r *route) fillFromMap(d *plan.Data, obj map[string]any, s *Scratch, srcPla
 			v = raw
 		} else {
 			var err error
-			if v, err = mapping.Eval(ss.expr, env); err != nil {
+			if v, err = s.eval.Eval(ss.expr, env); err != nil {
 				return err
 			}
 		}

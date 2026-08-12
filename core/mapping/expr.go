@@ -25,7 +25,7 @@ import (
 
 // Expr 是一条已编译的映射表达式。
 type Expr interface {
-	eval(env Env) (any, error)
+	eval(ev *Evaluator, env Env) (any, error)
 	// refs 把本表达式引用到的根字段名收集进 set。
 	refs(set map[string]struct{})
 	String() string

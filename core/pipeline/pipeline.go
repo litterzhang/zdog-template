@@ -15,6 +15,7 @@ import (
 	"fmt"
 
 	"github.com/huge-zhang/zdog-template/core/engine"
+	"github.com/huge-zhang/zdog-template/core/mapping"
 	"github.com/huge-zhang/zdog-template/core/plan"
 )
 
@@ -124,6 +125,7 @@ type Scratch struct {
 	res  *plan.Result
 	data *plan.Data
 	env  env
+	eval mapping.Evaluator
 	// arena 存放表达式求值结果的字节。每行复位，稳态下不再增长。
 	// 快路径（裸字段名）根本不碰它 —— 那些值是源文的子切片。
 	arena []byte

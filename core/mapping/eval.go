@@ -15,10 +15,31 @@ type Env interface {
 	Value(name string) (v any, ok bool, err error)
 }
 
-// Eval 求值一条表达式。
-func Eval(e Expr, env Env) (any, error) { return e.eval(env) }
+// Evaluator 持有跨表达式复用的求值缓冲。
+//
+// 函数调用需要一个参数切片。原先每次调用 make([]any, N)，于是每个函数
+// 表达式每行多一次分配 —— 实测 upper(x) 要 4 次分配，而纯取值表达式只要 1 次。
+// 改成一条共享的求值栈：进入调用时压参、出来时弹栈，稳态下不再增长。
+//
+// Evaluator **不是并发安全的**；每个 goroutine（每个 Scratch）持有自己的实例。
+type Evaluator struct {
+	args []any
+}
 
-func (f *fieldExpr) eval(env Env) (any, error) {
+// Eval 求值一条表达式，复用内部缓冲。
+func (ev *Evaluator) Eval(e Expr, env Env) (any, error) {
+	ev.args = ev.args[:0]
+	return e.eval(ev, env)
+}
+
+// Eval 是一次性求值的便利入口，自带临时 Evaluator。
+// 热路径请持有 Evaluator 并调用它的 Eval。
+func Eval(e Expr, env Env) (any, error) {
+	var ev Evaluator
+	return ev.Eval(e, env)
+}
+
+func (f *fieldExpr) eval(_ *Evaluator, env Env) (any, error) {
 	v, ok, err := env.Value(f.name)
 	if err != nil {
 		return nil, err
@@ -31,8 +52,8 @@ func (f *fieldExpr) eval(env Env) (any, error) {
 	return v, nil
 }
 
-func (p *propExpr) eval(env Env) (any, error) {
-	base, err := p.base.eval(env)
+func (p *propExpr) eval(ev *Evaluator, env Env) (any, error) {
+	base, err := p.base.eval(ev, env)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +67,8 @@ func (p *propExpr) eval(env Env) (any, error) {
 	}
 }
 
-func (x *indexExpr) eval(env Env) (any, error) {
-	base, err := x.base.eval(env)
+func (x *indexExpr) eval(ev *Evaluator, env Env) (any, error) {
+	base, err := x.base.eval(ev, env)
 	if err != nil {
 		return nil, err
 	}
@@ -65,29 +86,32 @@ func (x *indexExpr) eval(env Env) (any, error) {
 	return arr[i], nil
 }
 
-func (l *literalExpr) eval(Env) (any, error) { return l.v, nil }
+func (l *literalExpr) eval(*Evaluator, Env) (any, error) { return l.v, nil }
 
-func (o *orExpr) eval(env Env) (any, error) {
-	lhs, err := o.lhs.eval(env)
+func (o *orExpr) eval(ev *Evaluator, env Env) (any, error) {
+	lhs, err := o.lhs.eval(ev, env)
 	if err != nil {
 		return nil, err
 	}
 	if !isFalsy(lhs) {
 		return lhs, nil
 	}
-	return o.rhs.eval(env)
+	return o.rhs.eval(ev, env)
 }
 
-func (c *callExpr) eval(env Env) (any, error) {
-	args := make([]any, len(c.args))
-	for i, a := range c.args {
-		v, err := a.eval(env)
+func (c *callExpr) eval(ev *Evaluator, env Env) (any, error) {
+	// 在共享求值栈上压参，调用完弹回去。嵌套调用各自占一段，互不干扰。
+	base := len(ev.args)
+	defer func() { ev.args = ev.args[:base] }()
+
+	for _, a := range c.args {
+		v, err := a.eval(ev, env)
 		if err != nil {
 			return nil, err
 		}
-		args[i] = v
+		ev.args = append(ev.args, v)
 	}
-	v, err := c.fn.call(args)
+	v, err := c.fn.call(ev.args[base:])
 	if err != nil {
 		return nil, fmt.Errorf("mapping: %s: %w", c.name, err)
 	}
