@@ -1,32 +1,40 @@
 # Z-Template
 
-*中文 · [English](README.en.md)*
+*English · [中文](README.zh-CN.md)*
 
-**一份模板，两个方向。** 同一份模板既能把文本**解析**成结构化数据，也能把数据**格式化**回文本；再加一层字段映射，"文本 A → 文本 B" 就成了声明式的。
+**One template, both directions.** The same template that *parses* text into structured data also *formats* data back into text. Add a field-mapping layer and "text A → text B" becomes declarative.
 
 ```
-source text ──parse(源模板)──> 结构化数据 ──mapping──> 结构化数据 ──format(目标模板)──> target text
-     └──────────────────────────── transform ────────────────────────────────────────┘
+source text ──parse(source tmpl)──> data ──mapping──> data ──format(target tmpl)──> target text
+     └────────────────────────────── transform ──────────────────────────────────────┘
 ```
 
-Go 写的核心，`ctypes` 薄壳的 Python SDK，外加一个命令行。
+A Go core, a thin `ctypes` Python SDK, and a CLI.
 
 ---
 
-## 60 秒上手
+## 60 seconds
 
 ```bash
-git clone https://github.com/litterzhang/zdog-template && cd zdog-template
-make build                                # 构建 libztpl.so（需要 Go 1.25+ 和 gcc）
-uv tool install --from ./cli zdog-template-cli     # 装 ztpl 命令
-ztpl demo                                 # 跑一个自带的完整例子
+uv tool install zdog-template-cli   # or: pip install zdog-template-cli
+ztpl demo                           # a self-contained example, no input needed
 ```
 
-`ztpl demo` 会演示一个真实的发现过程：先给一个"看起来没问题"的模板，`verify` 报出它有歧义，加上约束后再跑通全流程。
+Or just the library:
 
-## 它解决什么
+```bash
+pip install zdog-template           # import ztemplate
+```
 
-日志、报文、半结构化文本的**转换**。比如把一行日志变成 CSV：
+Wheels ship the native library inside, so there's nothing to compile.
+Currently built for `manylinux_2_28_x86_64` and macOS arm64 — on anything else,
+see [from source](#from-source).
+
+`ztpl demo` walks through a real discovery: it starts with a template that *looks* fine, `verify` reports that it's ambiguous, and then a constraint makes it work.
+
+## What it's for
+
+Transforming logs, wire formats, and other semi-structured text. Turning a log line into CSV:
 
 ```bash
 ztpl convert \
@@ -41,27 +49,27 @@ ztpl convert \
 2026-08-12T01:00:05Z,WARN,-
 ```
 
-## 为什么不是已有的工具
+## Why not an existing tool
 
-| | parse | format | 结构化岛 | mapping |
+| | parse | format | structured islands | mapping |
 |---|:---:|:---:|:---:|:---:|
-| Python `parse` 库 | ✅ | ✅ | ❌ | ❌ |
+| Python `parse` | ✅ | ✅ | ❌ | ❌ |
 | Grok / logstash | ✅ | ❌ | ❌ | ❌ |
 | Jinja / Handlebars | ❌ | ✅ | ❌ | ❌ |
 | **Z-Template** | ✅ | ✅ | ✅ | ✅ |
 
-**"结构化岛"** 是关键差异：正则匹配不了嵌套/配对结构（那不是正则语言），而 `${json|name=p}` 能在非结构化文本中间精确框出一段 JSON —— 它是**自定界**的，所以也成了回溯的天然屏障。
+**Structured islands** are the real differentiator. A regex cannot match nested or balanced structure — that isn't a regular language — but `${json|name=p}` picks a complete JSON value out of the middle of unstructured text. Because such a value is *self-delimiting*, it also acts as a natural barrier to backtracking.
 
-## 两条 round-trip 定律
+## Two round-trip laws
 
-这是设计的骨架，不是附赠的检查器：
+These are the skeleton of the design, not a bolted-on checker:
 
-| 定律 | 表述 | 作用 |
+| Law | Statement | What it buys you |
 |---|---|---|
-| **A** | `format(parse(t)) == t` | 证明模板**完整覆盖**了源文，没有静默丢字符 |
-| **B** | `parse(format(c)) == c` | 证明目标模板**能被读回来**，转换不是单程票 |
+| **A** | `format(parse(t)) == t` | Proves the template **covers the source completely** — no characters silently dropped |
+| **B** | `parse(format(c)) == c` | Proves the target template **can be read back** — the transform isn't a one-way trip |
 
-定律 A 把"我的模板是不是漏了点什么"这个文本抽取里最烦人的问题，变成了一个自动断言：
+Law A turns the most annoying question in text extraction — *"is my template quietly missing something?"* — into an automatic assertion:
 
 ```bash
 $ ztpl verify -s '[${ts}] ${lv} ${msg}' --text '[T1] error disk full'
@@ -70,59 +78,59 @@ $ ztpl verify -s '[${ts}] ${lv} ${msg}' --text '[T1] error disk full'
     • ambiguous: at least 2 parses
 ```
 
-`${lv}` 没有约束，既可以是 `error` 也可以是 `error disk` —— 引擎只能挑一个，换份数据就可能挑到另一个。**这是模板的 bug，应该在开发期暴露，而不是上线后靠数据暴露。**
+`${lv}` is unconstrained, so it can be `error` or `error disk`. The engine has to pick one, and different data may make it pick the other. **That's a bug in the template, and it should surface during development rather than in production.**
 
-## 性能
+## Performance
 
-| | ns/行 | 分配 |
+| | ns/line | allocations |
 |---|---|---|
-| `transform`（字面量定界） | **60** | **0** |
-| 含 JSON 岛 | 87 | 0 |
-| 含重复块（5 迭代/行） | 75/迭代 | 0 |
-| Python SDK 端到端 | 94 | — |
-| 对照：纯 Python（`re.finditer` + f-string） | 948 | — |
+| `transform` (literal delimiters) | **60** | **0** |
+| with a JSON island | 87 | 0 |
+| with repeat blocks (5 items/line) | 75/item | 0 |
+| Python SDK, end to end | 94 | — |
+| for comparison: pure Python (`re.finditer` + f-string) | 948 | — |
 
-**10 倍于纯 Python，且快路径全程零分配。** 宿主语言只影响约 8%（纯 C 与 Python 跑同一个 `.so`）。
+**10× pure Python, and the fast path allocates nothing.** The host language accounts for only ~8% (plain C and Python drive the same `.so`).
 
-秘密不在"生成了更快的代码"，而在**把重复的判断从每行一次挪到每模板一次** —— 模板编译成扁平算子序列，热路径上没有接口分发、没有闭包、没有分配。
+The trick isn't "generating faster code" — it's **moving repeated decisions from once-per-line to once-per-template**. A template compiles to a flat sequence of operators; the hot path has no interface dispatch, no closures, no allocation.
 
 ## Python SDK
 
 ```python
 from ztemplate import Template
 
-# 只做解析时不需要目标模板
+# No target template needed when you only parse
 with Template("[${ts}] ${lv} payload=${json|name=p}") as t:
     t.parse_records('[T1] ERROR payload={"host":"web-1"}')
-    # [{'ts':'T1','lv':'ERROR','p':{'host':'web-1'}}]   ← JSON 岛被解码成真正的对象
+    # [{'ts':'T1','lv':'ERROR','p':{'host':'web-1'}}]   ← the island decodes to a real object
 
-    t.verify_text(log)     # 校验 round-trip 定律与歧义
-    t.inspect()            # 执行层级、是否需要回溯、字段结构
+    t.verify_text(log)     # check the round-trip laws and ambiguity
+    t.inspect()            # execution tier, whether backtracking is needed, field structure
 
-# 完整流水线
+# Full pipeline
 with Template("[${ts}] ${lv}", target="${level}|${time}",
               mapping={"level": "upper(lv)", "time": "ts"}) as t:
     t.transform_text("[T1] error")          # 'ERROR|T1'
 
-    # 流式：内存与输入总大小无关（122 MB 日志 +0 MB RSS）
+    # Streaming: memory is independent of input size (122 MB log costs +0 MB RSS)
     with open("big.log", "rb") as src, open("out.txt", "wb") as dst:
         t.transform_stream(src, dst)
 ```
 
-**不变量：`parse | format ≡ transform`** —— 流水线可以从中间劈开去看一眼，结果保证一致。代价是明码标价的 29 倍（中间态必须物化成文本再解析回来），而不是"结果可能不一样"这种说不清的风险。
+**Invariant: `parse | format ≡ transform`.** You can split the pipeline in the middle to inspect it and the result is guaranteed identical. The price is an explicit 29× — the intermediate has to be materialized as text and parsed back — rather than a vague risk that the answer might differ.
 
-## 模板语法
+## Template syntax
 
-| 写法 | 含义 |
+| Syntax | Meaning |
 |---|---|
-| `${name}` | 洞，由后继字面量定界（**最快**，走 SIMD 搜索） |
-| `${re\|name=n,expr=\d+}` | 正则洞，默认最短匹配 |
-| `${json\|name=p}` | JSON 结构化岛，自定界，惰性解码 |
-| `${each\|name=xs,sep=';'}…${end}` | 重复块，可嵌套 |
+| `${name}` | A hole, delimited by the literal that follows (**fastest** — SIMD literal search) |
+| `${re\|name=n,expr=\d+}` | Regex hole, shortest match by default |
+| `${json\|name=p}` | JSON island — self-delimiting, decoded lazily |
+| `${each\|name=xs,sep=';'}…${end}` | Repeat block, nestable |
 
-**映射表达式**是 JMESPath 的一个子集：`ts`（裸字段，零拷贝快路径）、`upper(lv)`、`p.host \|\| 'unknown'`、`p.tags[0]`、`length(p.tags)`。
+**Mapping expressions** are a subset of JMESPath: `ts` (bare field — zero-copy fast path), `upper(lv)`, `p.host \|\| 'unknown'`, `p.tags[0]`, `length(p.tags)`.
 
-**Shape** 给没有源文出处的字段（表达式产物）提供序列化规则：
+**Shape** supplies serialization rules for fields that have no origin in the source text (i.e. expression results):
 
 ```json
 "shape": {
@@ -132,40 +140,58 @@ with Template("[${ts}] ${lv}", target="${level}|${time}",
 }
 ```
 
-## 命令
+Time patterns use strftime rather than Go's reference layout — the core is Go, but the SDK's users write Python and shell.
 
-| 命令 | 作用 |
+## Commands
+
+| Command | Purpose |
 |---|---|
-| `ztpl parse` | 源文本 → 结构化绑定 |
-| `ztpl convert` | 源文本 → 目标文本（完整流水线） |
-| `ztpl format` | NDJSON 绑定 → 目标文本 |
-| `ztpl verify` | 校验 round-trip 定律与歧义 |
-| `ztpl inspect` | 看模板编译成了什么 |
-| `ztpl demo` | 自带的完整例子 |
+| `ztpl parse` | source text → structured bindings |
+| `ztpl convert` | source text → target text (full pipeline) |
+| `ztpl format` | NDJSON bindings → target text |
+| `ztpl verify` | check the round-trip laws and ambiguity |
+| `ztpl inspect` | see what a template compiles to |
+| `ztpl demo` | self-contained example |
 
-错误信息走 stderr，stdout 只放结果，非 TTY 自动关颜色 —— 可以放心接管道。
+Diagnostics go to stderr, results to stdout, and colors switch off when not a TTY — safe to put in a pipe.
 
-## 开发
+## From source
+
+Needed if there's no wheel for your platform, or if you want to hack on it.
+Requires Go 1.25+ and a C compiler.
 
 ```bash
-make ci          # 与 CI 完全相同的检查
-make bench       # 性能基准
-make demo        # 跑 CLI 例子
-make help        # 全部目标
+git clone https://github.com/litterzhang/zdog-template && cd zdog-template
+make build                                     # builds libztpl.so
+uv tool install --from ./cli zdog-template-cli # installs the `ztpl` command
 ```
 
-跨语言一致性靠 `conformance/cases/*.json`：**语义的唯一真源是用例，不是任何一个实现**。Go 和 Python 各跑一遍同一套用例 —— 它已经两次抓出 SDK 与 core 的分歧。
+Already have a `.so` built elsewhere? Point `ZTPL_LIB` at it.
 
-## 状态
+## Development
 
-能用，但还年轻。已知限制**全部记在 [`docs/DESIGN.md §12`](docs/DESIGN.md)**（26 条，分成"有意的设计取舍""物理限制""真正的欠债"三类，每条注明影响范围与规避方式）。
+```bash
+make ci          # exactly what CI runs
+make bench       # performance benchmarks
+make demo        # run the CLI example
+make help        # all targets
+```
 
-设计文档同时是决策记录：里面有全部实测数据，也有**被实测否掉的方案**——包括我一开始想错的那些。
+Cross-language consistency rests on `conformance/cases/*.json`: **the cases are the single source of truth for semantics, not any one implementation.** Go and Python each run the same suite — it has already caught two divergences between the SDK and the core.
 
-## 缘起
+## Status
 
-源于一篇 2022 年的[设计随笔](https://blog.942295.xyz/2022/11/22/z-template-设计/)与一个未完成的 Go 原型。这一版重写了执行引擎，保留了原型里好的部分（shape 类型系统、`${...}` 扫描器、tag/loader 注册表架构）。
+Usable, but young. Every known limitation is recorded in [`docs/DESIGN.md §12`](docs/DESIGN.md) — 26 of them, sorted into *deliberate trade-offs*, *physical limits*, and *actual debt*, each with its blast radius and workaround.
 
-## 许可
+The design document doubles as a decision log. It contains all the measurements, including **the approaches the measurements killed** — several of which were my first instinct.
+
+> The design doc is written in Chinese. The measurements, tables, and code identifiers
+> in it are language-neutral; if you'd like an English translation, open an issue.
+
+## Origins
+
+Grew out of a [2022 design note](https://blog.942295.xyz/2022/11/22/z-template-设计/) and an unfinished Go prototype. This version rewrote the execution engine while keeping what was good in the prototype: the shape type system, the `${...}` scanner, and the tag/loader registry architecture.
+
+## License
 
 [MIT](LICENSE)

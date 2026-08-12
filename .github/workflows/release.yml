@@ -125,6 +125,47 @@ jobs:
         run: ls -la dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
 
+  # ── GitHub Release ───────────────────────────────────────────
+  # 附上各平台的 .so —— ABI 是语言中立的，别的语言绑定用得上，
+  # 而 PyPI 只服务 Python。
+  github-release:
+    name: GitHub Release
+    needs: wheels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sdk-wheel-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: 从 CHANGELOG 摘出本版的说明
+        id: notes
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          # 取 "## [x.y.z]" 到下一个 "## [" 之间的内容
+          awk -v v="$ver" '
+            $0 ~ "^## \\[" v "\\]" {flag=1; next}
+            flag && /^## \[/ {exit}
+            flag {print}
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md 里没有 $ver 这一节" >&2; exit 1
+          fi
+          wc -l notes.md
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            artifacts/*.whl
+
   # CLI 依赖 SDK，所以等 SDK 发完再发 —— 否则用户装 CLI 时依赖还解析不到。
   # SDK 发布失败时 CLI 也不该发：没有 SDK 的 CLI 是废的。
   publish-cli:
