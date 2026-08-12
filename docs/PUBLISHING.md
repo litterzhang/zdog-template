@@ -9,31 +9,39 @@
 
 ## 一次性准备：Trusted Publishing
 
-用 OIDC 发布，**不需要在仓库里存 API token**。到 PyPI 项目设置 →
-Publishing → 添加可信发布者：
+用 OIDC 发布，**不需要在仓库里存 API token**。
+
+包名首次发布前 PyPI 上还没有项目，所以要用 **pending publisher**：
+<https://pypi.org/manage/account/publishing/> → 添加，两个包各填一次
+（`ztpl` 与 `ztpl-cli`）：
 
 | 字段 | 值 |
 |---|---|
+| PyPI Project Name | `ztpl` / `ztpl-cli` |
 | Owner | `litterzhang` |
-| Repository | `zdog-template` |
-| Workflow | `release.yml` |
-| Environment | `release` |
+| Repository name | `zdog-template` |
+| Workflow name | `release.yml` |
+| Environment name | `release` |
 
-TestPyPI 同样操作一遍。然后在 GitHub 仓库设置里建一个名为 `release` 的
-environment（可以顺便加上人工审批）。
+GitHub 侧的 `release` environment 已由 `make gh-setup` 建好。
+建议在它上面加一条人工审批（Settings → Environments → release →
+Required reviewers），这样每次发布都要点一下确认。
 
 ## 发布
 
 ```bash
-# 先发 TestPyPI 试水
-gh workflow run release.yml -f target=testpypi
-
-# 验证：装下来跑一遍
-uv run --with ztpl --index https://test.pypi.org/simple/ \
-  python -c "from ztpl import Template; print(Template('[\${a}]', target='\${a}').transform_text('[x]'))"
-
-# 没问题再打 tag 正式发布
 git tag v0.1.0 && git push origin v0.1.0
+```
+
+workflow 会构建各平台 wheel、在干净环境里冒烟验证，然后发到 PyPI。
+也可以 `gh workflow run release.yml` 手动触发（用于补发某个平台）。
+
+验证：
+
+```bash
+uv run --with ztpl python -c "
+from ztpl import Template
+print(Template('[\${a}] \${b}', target='\${b}/\${a}').transform_text('[x] y'))"
 ```
 
 ## 几个必须知道的坑

@@ -1,16 +1,10 @@
 name: Release
 
-# 打 tag 触发；也可以手动跑一次先发到 TestPyPI 试水。
+# 打 tag 触发。也可以手动跑，用于重发或补发某个平台的 wheel。
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      target:
-        description: 发到哪里
-        type: choice
-        options: [testpypi, pypi]
-        default: testpypi
 
 env:
   GO_VERSION: "1.25"
@@ -59,7 +53,8 @@ jobs:
         env:
           ZTPL_WHEEL_TAG: ${{ matrix.tag }}
         run: |
-          go build -buildmode=c-shared -o cshared/libztpl.$( [ "$RUNNER_OS" = macOS ] && echo dylib || echo so ) ./cshared/
+          ext=so; [ "$RUNNER_OS" = macOS ] && ext=dylib
+          go build -buildmode=c-shared -o "cshared/libztpl.$ext" ./cshared/
           cp cshared/libztpl.* sdk/python/ztpl/
           cd sdk/python && uv build --wheel
 
@@ -93,9 +88,7 @@ jobs:
           python3 - <<'EOF'
           import pathlib, re
           p = pathlib.Path("cli/pyproject.toml")
-          s = p.read_text()
-          s = re.sub(r"\n\[tool\.uv\.sources\][^\[]*", "\n", s)
-          p.write_text(s)
+          p.write_text(re.sub(r"\n\[tool\.uv\.sources\][^\[]*", "\n", p.read_text()))
           EOF
           cd cli && uv build --wheel
       - uses: actions/upload-artifact@v4
@@ -103,9 +96,9 @@ jobs:
           name: wheel-cli
           path: cli/dist/*.whl
 
-  # ── 发布 ─────────────────────────────────────────────────────
+  # ── 发布到 PyPI ──────────────────────────────────────────────
   # 用 Trusted Publishing（OIDC）：不需要在仓库里存 API token。
-  # 需先到 PyPI 项目设置里把这个仓库 + workflow 名登记为可信发布者。
+  # 前置条件见 docs/PUBLISHING.md。
   publish:
     needs: [wheels, cli-wheel]
     runs-on: ubuntu-latest
@@ -122,12 +115,4 @@ jobs:
       - name: 列出将要发布的包
         run: ls -la dist/
 
-      - name: 发到 TestPyPI
-        if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-      - name: 发到 PyPI
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.target == 'pypi'
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@release/v1
