@@ -1,12 +1,14 @@
 GO      ?= go
 PYTHON  ?= python3
+UV      ?= uv
+PYDIR   := sdk/python
 SOEXT   := so
 ifeq ($(shell uname -s),Darwin)
 SOEXT := dylib
 endif
 LIB := cshared/libztpl.$(SOEXT)
 
-.PHONY: all build test bench conformance fmt vet lint clean help
+.PHONY: all build test bench conformance fmt vet clean help py-sync py-test py-build
 
 all: build test conformance ## 构建 + 测试 + 一致性用例
 
@@ -28,7 +30,17 @@ conformance: build ## 跨语言一致性用例：Go 与 Python 跑同一套 case
 	@echo "--- Go ---"
 	@$(GO) test ./conformance/
 	@echo "--- Python ---"
-	@$(PYTHON) sdk/python/tests/run_conformance.py
+	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) run pytest tests/test_conformance.py
+
+py-sync: ## 同步 Python 开发依赖
+	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) sync
+
+py-test: build ## Python SDK 全部测试
+	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) run pytest
+
+py-build: build ## 构建 Python wheel（先把 .so 拷进包内）
+	@cp cshared/libztpl.$(SOEXT) $(PYDIR)/ztpl/
+	@cd $(PYDIR) && UV_LINK_MODE=copy $(UV) build
 
 bench: build ## 性能门禁
 	@echo "--- Go core ---"
@@ -39,6 +51,8 @@ bench: build ## 性能门禁
 
 clean: ## 清理构建产物
 	rm -f cshared/libztpl.so cshared/libztpl.dylib cshared/libztpl.h
+	rm -f $(PYDIR)/ztpl/libztpl.* 
+	rm -rf $(PYDIR)/dist $(PYDIR)/.pytest_cache
 	find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
 help: ## 显示可用目标

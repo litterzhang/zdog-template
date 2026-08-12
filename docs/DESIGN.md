@@ -417,7 +417,7 @@ Go 用户直接 `import core/`，不走 `.so`。
 | **P2** | `${each}` 重复块 + 属性引号语法 | ✅ **嵌套块、组到组递归路由、定律 A/B 全绿，零分配** |
 | **P3** | Shape codec 接入 format，无出处字段的序列化 | 定律 B 覆盖类型化字段 |
 | **P4** | mapping 表达式（JMESPath 子集）、结构化路径 `user.name` / `items[]` | 端到端日志 → JSON 报文 |
-| **P5** | Java SDK（FFM API），conformance 三语言绿灯 | |
+| **P5** | Python SDK 用 uv + pyproject 正式打包 | ✅ 运行期零依赖，28 项 pytest 绿 |
 | **P6** | 歧义检测 `strict` 模式（枚举全部解）、跨算子回溯 | |
 
 ### P1 已知限制（已记录，非遗漏）
