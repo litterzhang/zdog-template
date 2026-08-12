@@ -89,6 +89,27 @@ func BenchmarkTransformEach(b *testing.B) {
 	b.ReportMetric(nsPerLine/5, "ns/item")
 }
 
+// 表达式路径的代价：必须物化被引用字段的值（岛要解码），
+// 并把结果序列化进 arena。对照 BenchmarkTransformLiteral 的零拷贝快路径。
+func BenchmarkTransformExprScalar(b *testing.B) {
+	benchPipeline(b, &pipeline.Config{
+		Version: 1,
+		Source:  "[${ts}] ${lv} ${msg} payload=${payload}",
+		Mapping: map[string]string{"level": "upper(lv)", "time": "ts", "text": "msg"},
+		Target:  "${level}|${time}|${text}",
+	})
+}
+
+// 表达式钻进结构化岛：这是唯一会触发 JSON 解码的路径。
+func BenchmarkTransformExprIsland(b *testing.B) {
+	benchPipeline(b, &pipeline.Config{
+		Version: 1,
+		Source:  "[${ts}] ${lv} ${msg} payload=${json|name=p}",
+		Mapping: map[string]string{"level": "lv", "host": "p.host || 'unknown'"},
+		Target:  "${level}|${host}",
+	})
+}
+
 func TestTransformBasics(t *testing.T) {
 	p, err := pipeline.Compile(&pipeline.Config{
 		Version: 1,

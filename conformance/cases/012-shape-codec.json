@@ -1,0 +1,22 @@
+{
+  "name": "shape-codec",
+  "description": "Shape codec：为无 Raw 出处的字段（表达式产物）提供序列化规则。声明了 shape 的字段会被移出零拷贝快路径 —— 按类型格式化本身就意味着输出不再等于源文字节，这是刻意的显式取舍。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} cpu=${cpu} payload=${json|name=p}",
+    "mapping": {
+      "when": "ts",
+      "usage": "to_number(cpu)",
+      "host": "p.host || 'unknown'",
+      "ratio": "to_number(p.pct)"
+    },
+    "target": "${when} ${host} cpu=${usage} pct=${ratio}",
+    "shape": {
+      "usage": { "type": "number", "format": "%.2f" },
+      "ratio": { "type": "number", "format": "%05.1f" },
+      "host": { "type": "string", "default": "N/A" }
+    }
+  },
+  "input": "[T1] WARN cpu=93.456 payload={\"host\":\"web-1\",\"pct\":7.25}",
+  "output": "T1 web-1 cpu=93.46 pct=007.2\n"
+}

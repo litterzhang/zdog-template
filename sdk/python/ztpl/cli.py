@@ -48,7 +48,8 @@ def main(argv=None) -> int:
         cfg = _load_config(args)
         data = args.input.read_bytes() if args.input else sys.stdin.buffer.read()
         with Template(
-            source=cfg["source"], target=cfg["target"], mapping=cfg.get("mapping")
+            source=cfg["source"], target=cfg["target"],
+            mapping=cfg.get("mapping"), shape=cfg.get("shape"),
         ) as tpl:
             res = tpl.transform(data)
     except ZtplError as exc:

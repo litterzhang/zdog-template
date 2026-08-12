@@ -1,0 +1,17 @@
+{
+  "name": "mapping-fallback-on-missing",
+  "description": "|| 回退：JMESPath 语义下缺失字段求值为 null 而非报错，因此 a || 'default' 可用。假值包括 null/空串/空数组/空对象/false，但数字 0 不是假值。",
+  "config": {
+    "version": 1,
+    "source": "${lv} ${json|name=p}",
+    "mapping": {
+      "host": "p.host || 'unknown'",
+      "region": "p.region || 'default'",
+      "count": "p.count || 'none'",
+      "flag": "p.flag || 'off'"
+    },
+    "target": "${host}|${region}|${count}|${flag}"
+  },
+  "input": "INFO {\"host\":null,\"count\":0,\"flag\":false}",
+  "output": "unknown|default|0|off\n"
+}

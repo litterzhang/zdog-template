@@ -29,8 +29,13 @@ type Config struct {
 	Version int    `json:"version"`
 	Source  string `json:"source"`
 	Target  string `json:"target"`
-	// Mapping 是 目标字段 -> 源字段。缺省时按同名直通。
+	// Mapping 是 目标字段 -> 源字段（或映射表达式）。缺省时按同名直通。
 	Mapping map[string]string `json:"mapping,omitempty"`
+	// Shape 是 目标字段 -> shape 定义，为**无 Raw 出处**的字段提供序列化规则。
+	//
+	// 声明了 shape 的字段会被移出零拷贝快路径 —— 因为"按类型格式化"本身
+	// 就意味着输出不再等于源文字节。这是刻意的显式取舍。
+	Shape map[string]json.RawMessage `json:"shape,omitempty"`
 }
 
 // ParseConfig 从 JSON 解析配置。
@@ -66,7 +71,11 @@ func Compile(cfg *Config) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline: target template: %w", err)
 	}
 
-	r, err := buildRoute(src.Plan(), tgt.Plan(), cfg.Mapping, "")
+	codecs, err := compileCodecs(cfg.Shape)
+	if err != nil {
+		return nil, err
+	}
+	r, err := buildRoute(src.Plan(), tgt.Plan(), cfg.Mapping, codecs, "")
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +92,10 @@ func (p *Pipeline) Target() *engine.Engine { return p.tgt }
 type Scratch struct {
 	res  *plan.Result
 	data *plan.Data
+	env  env
+	// arena 存放表达式求值结果的字节。每行复位，稳态下不再增长。
+	// 快路径（裸字段名）根本不碰它 —— 那些值是源文的子切片。
+	arena []byte
 }
 
 // NewScratch 为该流水线分配工作区。每个 goroutine 应持有自己的实例。
@@ -98,7 +111,8 @@ func (p *Pipeline) TransformLine(dst, line []byte, s *Scratch) ([]byte, bool) {
 	if !p.src.ParseInto(line, s.res) {
 		return dst, false
 	}
-	if !p.route.fill(s.data, s.res, line) {
+	s.arena = s.arena[:0]
+	if !p.route.fill(s.data, s.res, line, s, p.src.Plan()) {
 		return dst, false
 	}
 	return p.tgt.Plan().Format(dst, s.data)

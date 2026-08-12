@@ -187,20 +187,71 @@ JSON 值是**自定界**的：从位置 p 开始，要么解析出唯一一个�
 
 ## 6. Mapping
 
-路径映射 + 现成表达式，**不发明语言**：
+**JMESPath 的一个子集**，不发明语言：
 
-```yaml
-target:
-  time:      ts
-  severity:  upper(level)
-  host:      payload.host
-  usage:     to_number(payload.pct)
-  items[]:   data[*].id
+```json
+"mapping": {
+  "time":  "ts",                      // 裸字段 —— 零拷贝快路径
+  "level": "upper(lv)",               // 函数
+  "host":  "p.host || 'unknown'",     // 路径 + 回退
+  "first": "p.tags[0]",               // 下标
+  "n":     "length(p.tags)"
+}
 ```
 
-表达式引擎选 **JMESPath**：有正式 spec（JSONPath 各家实现打架）、单值语义清晰、内置 `length/join/sort_by/to_number`、支持安全地注册自定义函数 —— 不需要 `eval`，无注入面。
+| 支持 | 不支持（刻意留白） |
+|---|---|
+| 字段、属性路径 `a.b`、下标 `a[0]`（含负下标） | 投影 `a[*].b` |
+| 字面量 `'s'` `42` `true` `null` | 过滤 `[?x=='y']` |
+| `\|\|` 回退（JMESPath 假值语义，**数字 0 不是假值**） | 多选哈希/列表 |
+| 函数（见下） | 管道 `\|` |
 
-左边的 key 是**写入路径**，`items[]` 表示写成列表。路径写入器与 §3 的 Path 复用同一份代码。
+重复结构由模板的 `${each}` 展开，所以投影在这里没有必要。
+
+**函数**：`length` `to_string` `to_number` `type` `not_null` `join` `keys` `values`
+`starts_with` `ends_with` `contains` `reverse` `sort`（JMESPath 内置）
+\+ `upper` `lower` `trim` `replace` `split`（按 JMESPath 的自定义函数机制扩展 ——
+规范本身没有大小写函数，但文本转换里太常用）。
+
+### ⚡ 性能分叉：裸字段名不走表达式
+
+这是本层最重要的设计约束：
+
+| 映射形式 | 路径 | 实测 |
+|---|---|---|
+| `"time": "ts"` | **零拷贝**，直接引用源文子切片 | **93.65 ns/行，0 分配** |
+| `"level": "upper(lv)"` | 物化值 → 求值 → 序列化进 arena | 236.5 ns/行 |
+| `"host": "p.host"` | 同上，且要**解码 JSON 岛** | 1310 ns/行 |
+
+编译期就用 `IsBareField` 把两类分开。表达式引用的字段也在编译期校验存在性，
+免得每一行才在运行期发现字段名拼错。求值环境是惰性的 —— **没被任何表达式
+引用的岛永远不会被解码**。
+
+> 已知优化点：表达式路径每行约 3 次分配来自 `any` 装箱。改用带类型标签的
+> Value 结构体可以消除，属 P6 范畴。当前 236 ns/行 仍是纯 Python 的 4 倍快。
+
+---
+
+## 6b. Shape codec —— 无出处字段的序列化规则
+
+```json
+"shape": {
+  "usage": { "type": "number", "format": "%.2f" },
+  "host":  { "type": "string", "default": "N/A" },
+  "id":    { "type": "number", "required": true }
+}
+```
+
+Encode 与 Decode 必须**互逆** —— 这就是定律 B 在 codec 层的表述，有专门的测试守护。
+
+职责：
+- `default` —— 值为 null 时的填充
+- `required` —— 值为 null 且无 default 时报错
+- `format` —— `%.2f` / `%-10s` 之类；**在编译期**校验与类型匹配，不是每行才报
+- 类型强制与校验（number/string/bool 之间的合法转换）
+
+> **声明了 shape 的字段会被移出零拷贝快路径。** 按类型格式化本身就意味着
+> 输出不再等于源文字节，这是刻意的显式取舍。
 
 ---
 
@@ -415,8 +466,8 @@ Go 用户直接 `import core/`，不走 `.so`。
 | **P0** | 仓库骨架、ABI v1 冻结、conformance 格式、bench 门禁 | ✅ 已完成 |
 | **P1** | shape 移植 + 语法层移植 + plan 编译器 + engine + pipeline + C ABI + Python SDK | ✅ **定律 A/B 全绿，8/8 conformance 用例 Go 与 Python 双语言通过** |
 | **P2** | `${each}` 重复块 + 属性引号语法 | ✅ **嵌套块、组到组递归路由、定律 A/B 全绿，零分配** |
-| **P3** | Shape codec 接入 format，无出处字段的序列化 | 定律 B 覆盖类型化字段 |
-| **P4** | mapping 表达式（JMESPath 子集）、结构化路径 `user.name` / `items[]` | 端到端日志 → JSON 报文 |
+| **P4** | mapping 表达式（JMESPath 子集）、结构化路径 | ✅ **快路径零拷贝保持不变，表达式惰性求值** |
+| **P3** | Shape codec 接入 format，无出处字段的序列化 | ✅ **Encode/Decode 互逆有测试守护** |
 | **P5** | Python SDK 用 uv + pyproject 正式打包 | ✅ 运行期零依赖，28 项 pytest 绿 |
 | **P6** | 歧义检测 `strict` 模式（枚举全部解）、跨算子回溯 | |
 
@@ -426,7 +477,8 @@ Go 用户直接 `import core/`，不走 `.so`。
 - Context 按洞名平铺，重复块通过 `GroupItem` 逐层下钻；扁平的结构化路径
   （`items[0].id` 这种字符串寻址）随 P4 的 mapping 层一起做。
 - 重复块的迭代切分不会因**块之后**的算子失败而重试（与 `OpRegexUntil` 同类限制）。
-- mapping 目前只支持同名/重命名直通，表达式求值是 P4。
+- mapping 表达式不支持投影/过滤/管道；重复结构用 `${each}` 展开。
+- shape 按字段名生效，作用于所有层级（含 `${each}` 内部）；尚无按路径限定的写法。
 - 非 strict 的 JSON 岛只校验结构配对，不校验完整合法性（67 ns vs 360 ns 的取舍）；
   需要严格校验时写 `${json|name=p,strict=true}`。
 

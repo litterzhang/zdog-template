@@ -19,7 +19,8 @@ def test_conformance(name, case):
     if case.get("compile_error"):
         with pytest.raises(ZtplCompileError) as exc:
             Template(
-                source=cfg["source"], target=cfg["target"], mapping=cfg.get("mapping")
+                source=cfg["source"], target=cfg["target"],
+                mapping=cfg.get("mapping"), shape=cfg.get("shape"),
             ).close()
         assert case["compile_error"] in str(exc.value), (
             f"错误信息 {str(exc.value)!r} 不含期望子串 {case['compile_error']!r}"
@@ -27,7 +28,8 @@ def test_conformance(name, case):
         return
 
     with Template(
-        source=cfg["source"], target=cfg["target"], mapping=cfg.get("mapping")
+        source=cfg["source"], target=cfg["target"],
+        mapping=cfg.get("mapping"), shape=cfg.get("shape"),
     ) as tpl:
         res = tpl.transform(case["input"].encode("utf-8"))
         assert res.output.decode("utf-8") == case["output"]

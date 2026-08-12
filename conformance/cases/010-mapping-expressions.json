@@ -1,0 +1,20 @@
+{
+  "name": "mapping-expressions",
+  "description": "mapping 表达式：结构化路径钻进 JSON 岛、|| 回退、函数调用。注意裸字段名（time: ts）仍走零拷贝快路径，只有含路径/函数的字段才物化值。",
+  "config": {
+    "version": 1,
+    "source": "[${ts}] ${lv} ${msg} payload=${json|name=p}",
+    "mapping": {
+      "time": "ts",
+      "level": "upper(lv)",
+      "host": "p.host || 'unknown'",
+      "first_tag": "p.tags[0]",
+      "tag_count": "length(p.tags)",
+      "joined": "join('+', p.tags)"
+    },
+    "target": "${time} ${level} ${host} ${first_tag} ${tag_count} ${joined}"
+  },
+  "input": "[T1] error disk full payload={\"host\":\"web-1\",\"tags\":[\"a\",\"b\",\"c\"]}",
+  "output": "T1 ERROR web-1 a 3 a+b+c\n",
+  "tier": "T2/island"
+}

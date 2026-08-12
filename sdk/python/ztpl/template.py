@@ -42,27 +42,35 @@ class Template:
     一次编译、长期持有。句柄在 Go 侧无全局可变状态，可多线程并发调用；
     但同一个 Template 实例的输出缓冲不是线程安全的，多线程请各持一个实例。
 
+    mapping 的值可以是裸字段名（零拷贝快路径），也可以是 JMESPath 子集表达式
+    （`upper(lv)`、`p.host || 'unknown'`）。shape 为表达式产物提供序列化规则。
+
     示例::
 
         with Template(source="[${ts}] ${lv} ${msg}",
                       target="${level}|${text}",
-                      mapping={"level": "lv", "text": "msg"}) as t:
-            print(t.transform_text("[T1] ERROR disk full"))
+                      mapping={"level": "upper(lv)", "text": "msg"}) as t:
+            print(t.transform_text("[T1] error disk full"))
     """
 
     __slots__ = ("_lib", "_h", "_buf", "_stats", "_closed")
 
     def __init__(self, source: str, target: str, mapping: dict | None = None,
-                 *, buffer_size: int = 1 << 16):
+                 shape: dict | None = None, *, buffer_size: int = 1 << 16):
         if not isinstance(source, str) or not isinstance(target, str):
             raise TypeError("source 与 target 必须是 str")
         self._closed = True  # 先置位，__del__ 在构造失败时也能安全运行
         self._lib = load()
-        cfg = json.dumps(
-            {"version": ABI_VERSION, "source": source,
-             "target": target, "mapping": mapping or {}},
-            ensure_ascii=False,
-        ).encode("utf-8")
+        cfg_obj = {
+            "version": ABI_VERSION,
+            "source": source,
+            "target": target,
+            "mapping": mapping or {},
+        }
+        if shape:
+            # shape 为无 Raw 出处的字段（表达式产物）提供序列化规则。
+            cfg_obj["shape"] = shape
+        cfg = json.dumps(cfg_obj, ensure_ascii=False).encode("utf-8")
 
         h = self._lib.ZtplCompile(cfg, len(cfg))
         if h <= 0:
