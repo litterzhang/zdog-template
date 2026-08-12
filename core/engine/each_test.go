@@ -220,7 +220,7 @@ func TestVerifyUnambiguous(t *testing.T) {
 	if ea.Count < 2 {
 		t.Errorf("Count = %d, want >= 2", ea.Count)
 	}
-	if !strings.Contains(err.Error(), "字面量分隔符") {
+	if !strings.Contains(err.Error(), "literal delimiter") {
 		t.Errorf("错误信息应给出可操作建议: %v", err)
 	}
 	// 无解

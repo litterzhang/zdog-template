@@ -222,22 +222,22 @@ func TestRefs(t *testing.T) {
 
 func TestCompileErrors(t *testing.T) {
 	for _, tc := range []struct{ expr, want string }{
-		{"", "表达式为空"},
-		{"a.", "需要属性名"},
-		{"a[", "下标必须是整数"},
-		{"a[*]", "投影"},
-		{"a[?x]", "过滤"},
-		{"a | b", "管道"},
-		{"nosuchfn(a)", "未知函数"},
-		{"upper()", "需要 1 个参数"},
-		{"upper(a, b)", "需要 1 个参数"},
-		{"join('-')", "需要 2 个参数"},
-		{"'unterminated", "未闭合"},
-		{"a b", "多余内容"},
-		{"@", "无法识别的字符"},
-		{`a || "x"`, "单引号"}, // 双引号是最容易踩的坑，错误必须点明
-		{"a[0", "缺少 ']'"},
-		{"upper(a", "缺少 ')'"},
+		{"", "empty expression"},
+		{"a.", "expected a property name"},
+		{"a[", "index must be an integer"},
+		{"a[*]", "projection"},
+		{"a[?x]", "filter"},
+		{"a | b", "pipe operator"},
+		{"nosuchfn(a)", "unknown function"},
+		{"upper()", "takes 1 argument"},
+		{"upper(a, b)", "takes 1 argument"},
+		{"join('-')", "takes 2 argument"},
+		{"'unterminated", "unterminated"},
+		{"a b", "unexpected trailing input"},
+		{"@", "unexpected character"},
+		{`a || "x"`, "single quotes"}, // 双引号是最容易踩的坑，错误必须点明
+		{"a[0", "missing ']'"},
+		{"upper(a", "missing ')'"},
 	} {
 		_, err := mapping.Compile(tc.expr)
 		if err == nil {

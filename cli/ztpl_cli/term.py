@@ -1,7 +1,8 @@
-"""终端输出辅助：颜色、表格、JSON 高亮。
+"""Terminal helpers: colors, tables, JSON highlighting.
 
-无第三方依赖 —— CLI 是给人快速上手用的，不该先让人装一堆东西。
-非 TTY（管道、重定向）时自动关闭颜色，保证输出可被下游程序消费。
+No third-party dependencies — the CLI is meant for quick hands-on use and
+shouldn't make you install things first. Colors turn themselves off when
+stdout isn't a TTY, so the output stays pipe-friendly.
 """
 
 import json
@@ -33,24 +34,20 @@ cyan = _c("36")
 
 
 def err(msg: str) -> None:
-    """错误信息一律走 stderr，不污染可被管道消费的 stdout。"""
-    print(f"{red('错误')}: {msg}", file=sys.stderr)
+    """Errors always go to stderr so stdout stays consumable by a pipe."""
+    print(f"{red('error')}: {msg}", file=sys.stderr)
 
 
 def warn(msg: str) -> None:
-    print(f"{yellow('警告')}: {msg}", file=sys.stderr)
+    print(f"{yellow('warning')}: {msg}", file=sys.stderr)
 
 
 def note(msg: str) -> None:
     print(dim(msg), file=sys.stderr)
 
 
-def kv(key: str, value, indent: int = 0) -> str:
-    return f"{' ' * indent}{cyan(key)}: {value}"
-
-
 def pretty_json(obj, indent: int = 2) -> str:
-    """带轻量高亮的 JSON。"""
+    """JSON with light key highlighting."""
     text = json.dumps(obj, ensure_ascii=False, indent=indent)
     if not _ENABLED:
         return text
@@ -67,7 +64,7 @@ def pretty_json(obj, indent: int = 2) -> str:
 
 
 def table(rows: list[tuple[str, str]], indent: int = 2) -> str:
-    """两列对齐表格。按显示宽度对齐（中文算两格）。"""
+    """Two-column aligned table. Aligns by display width (CJK counts as 2)."""
     if not rows:
         return ""
     width = max(_display_width(k) for k, _ in rows)
@@ -78,5 +75,6 @@ def table(rows: list[tuple[str, str]], indent: int = 2) -> str:
 
 
 def _display_width(s: str) -> int:
-    # CJK 与全角标点占两格；不追求 Unicode 完备，够对齐即可
+    # CJK and full-width punctuation take two cells; not aiming for full
+    # Unicode correctness, just enough to line columns up.
     return sum(2 if ord(ch) > 0x2E80 else 1 for ch in s)

@@ -48,7 +48,7 @@ func compileCodecs(defs map[string]json.RawMessage) (map[string]*shape.Codec, er
 	for name, raw := range defs {
 		c, err := shape.LoadCodec(raw)
 		if err != nil {
-			return nil, fmt.Errorf("pipeline: 字段 %q 的 shape 无效: %w", name, err)
+			return nil, fmt.Errorf("pipeline: invalid shape for field %q: %w", name, err)
 		}
 		out[name] = c
 	}
@@ -67,7 +67,7 @@ func buildRoute(src, tgt *plan.Plan, m map[string]string,
 
 		expr, err := mapping.Compile(raw)
 		if err != nil {
-			return route{}, fmt.Errorf("pipeline: 目标字段 %s%q 的映射 %q 无效: %w",
+			return route{}, fmt.Errorf("pipeline: invalid mapping %[3]q for target field %[1]s%[2]q: %[4]w",
 				path, tName, raw, err)
 		}
 
@@ -124,7 +124,7 @@ func validateRefs(src *plan.Plan, e mapping.Expr, path, tName, raw string) error
 	for _, name := range mapping.Refs(e) {
 		if _, ok := src.Slot(name); !ok {
 			return fmt.Errorf(
-				"pipeline: 目标字段 %s%q 的表达式 %q 引用了未知源字段 %q (available: %v)",
+				"pipeline: expression %q for target field %s%q references unknown source field %q (available: %v)",
 				path, tName, raw, name, src.Names())
 		}
 	}

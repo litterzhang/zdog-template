@@ -24,7 +24,7 @@ type Codec struct {
 // NewCodec 由 shape 节点构造 codec。
 func NewCodec(n model.Node) (*Codec, error) {
 	if n == nil {
-		return nil, fmt.Errorf("shape: codec 需要一个非 nil 节点")
+		return nil, fmt.Errorf("shape: codec requires a non-nil node")
 	}
 	c := &Codec{node: n, meta: n.Meta()}
 	if err := c.validateFormat(); err != nil {
@@ -57,12 +57,12 @@ func (c *Codec) validateFormat() error {
 		verbs := strings.Count(strings.ReplaceAll(f, "%%", ""), "%")
 		if verbs != 1 {
 			return fmt.Errorf(
-				"shape: format %q 需要恰好一个动词（如 %%.2f、%%-10s）；"+
-					"字面百分号请写 %%%%，例如 %%.1f%%%%", f)
+				"shape: format %q needs exactly one verb (e.g. %%.2f, %%-10s); "+
+					"write %%%% for a literal percent, e.g. %%.1f%%%%", f)
 		}
 		return nil
 	default:
-		return fmt.Errorf("shape: %s 类型不支持 format", c.node.Type())
+		return fmt.Errorf("shape: type %s does not support format", c.node.Type())
 	}
 }
 
@@ -72,7 +72,7 @@ func (c *Codec) Encode(dst []byte, v any) ([]byte, error) {
 		if c.meta.Default != nil {
 			v = c.meta.Default
 		} else if c.meta.Required {
-			return dst, fmt.Errorf("shape: 必填字段的值为空")
+			return dst, fmt.Errorf("shape: required field has no value")
 		} else {
 			return dst, nil
 		}
@@ -113,7 +113,7 @@ func (c *Codec) Encode(dst []byte, v any) ([]byte, error) {
 	default: // object / array / dict / any -> JSON
 		b, err := json.Marshal(v)
 		if err != nil {
-			return dst, fmt.Errorf("shape: 无法序列化 %T: %w", v, err)
+			return dst, fmt.Errorf("shape: cannot serialize %T: %w", v, err)
 		}
 		return append(dst, b...), nil
 	}
@@ -124,7 +124,7 @@ func (c *Codec) Decode(raw []byte) (any, error) {
 	s := string(raw)
 	if s == "" {
 		if c.meta.Required {
-			return nil, fmt.Errorf("shape: 必填字段的值为空")
+			return nil, fmt.Errorf("shape: required field has no value")
 		}
 		return nil, nil
 	}
@@ -134,13 +134,13 @@ func (c *Codec) Decode(raw []byte) (any, error) {
 	case model.TypeNumber:
 		f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 		if err != nil {
-			return nil, fmt.Errorf("shape: %q 不是数字", s)
+			return nil, fmt.Errorf("shape: %q is not a number", s)
 		}
 		return f, nil
 	case model.TypeBool:
 		b, err := strconv.ParseBool(strings.TrimSpace(s))
 		if err != nil {
-			return nil, fmt.Errorf("shape: %q 不是布尔值", s)
+			return nil, fmt.Errorf("shape: %q is not a boolean", s)
 		}
 		return b, nil
 	default:
@@ -148,7 +148,7 @@ func (c *Codec) Decode(raw []byte) (any, error) {
 		dec := json.NewDecoder(strings.NewReader(s))
 		dec.UseNumber()
 		if err := dec.Decode(&v); err != nil {
-			return nil, fmt.Errorf("shape: %q 不是合法 JSON: %w", s, err)
+			return nil, fmt.Errorf("shape: %q is not valid JSON: %w", s, err)
 		}
 		return v, nil
 	}
@@ -170,7 +170,7 @@ func coerceString(v any) (string, error) {
 		}
 		return strconv.FormatFloat(x, 'g', -1, 64), nil
 	}
-	return "", fmt.Errorf("shape: 需要 string，得到 %T", v)
+	return "", fmt.Errorf("shape: expected string, got %T", v)
 }
 
 func coerceNumber(v any) (float64, error) {
@@ -186,11 +186,11 @@ func coerceNumber(v any) (float64, error) {
 	case string:
 		f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
 		if err != nil {
-			return 0, fmt.Errorf("shape: %q 不是数字", x)
+			return 0, fmt.Errorf("shape: %q is not a number", x)
 		}
 		return f, nil
 	}
-	return 0, fmt.Errorf("shape: 需要 number，得到 %T", v)
+	return 0, fmt.Errorf("shape: expected number, got %T", v)
 }
 
 func coerceBool(v any) (bool, error) {
@@ -200,9 +200,9 @@ func coerceBool(v any) (bool, error) {
 	case string:
 		b, err := strconv.ParseBool(strings.TrimSpace(x))
 		if err != nil {
-			return false, fmt.Errorf("shape: %q 不是布尔值", x)
+			return false, fmt.Errorf("shape: %q is not a boolean", x)
 		}
 		return b, nil
 	}
-	return false, fmt.Errorf("shape: 需要 bool，得到 %T", v)
+	return false, fmt.Errorf("shape: expected bool, got %T", v)
 }

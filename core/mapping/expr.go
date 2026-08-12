@@ -163,16 +163,18 @@ func (l *lexer) next() (token, error) {
 			l.pos += 2
 			return token{tkOr, "||", start}, nil
 		}
-		return token{}, fmt.Errorf("mapping: 位置 %d：单个 '|'（管道）不在支持的子集内", start)
+		return token{}, fmt.Errorf("mapping: at offset %d: the pipe operator '|' is not in the supported subset", start)
 	case '"':
 		return token{}, fmt.Errorf(
-			"mapping: 位置 %d：字符串字面量请用**单引号**，如 'text'（双引号在这里没有含义）", start)
+			"mapping: at offset %d: string literals use single quotes, e.g. 'text' "+
+				"(double quotes have no meaning here)", start)
 	case '*':
 		return token{}, fmt.Errorf(
-			"mapping: 位置 %d：投影 [*] 不在支持的子集内 —— 重复结构请用模板的 ${each} 块展开", start)
+			"mapping: at offset %d: projection [*] is not in the supported subset "+
+				"— use a ${each} block in the template to expand repeated structures", start)
 	case '?':
 		return token{}, fmt.Errorf(
-			"mapping: 位置 %d：过滤 [?...] 不在支持的子集内", start)
+			"mapping: at offset %d: filter [?...] is not in the supported subset", start)
 	case '\'':
 		l.pos++
 		var b strings.Builder
@@ -190,7 +192,7 @@ func (l *lexer) next() (token, error) {
 			b.WriteByte(ch)
 			l.pos++
 		}
-		return token{}, fmt.Errorf("mapping: 位置 %d：字符串字面量未闭合", start)
+		return token{}, fmt.Errorf("mapping: at offset %d: unterminated string literal", start)
 	}
 
 	if c == '-' || (c >= '0' && c <= '9') {
@@ -213,7 +215,7 @@ func (l *lexer) next() (token, error) {
 		}
 		return token{tkIdent, l.src[start:l.pos], start}, nil
 	}
-	return token{}, fmt.Errorf("mapping: 位置 %d：无法识别的字符 %q", start, string(c))
+	return token{}, fmt.Errorf("mapping: at offset %d: unexpected character %q", start, string(c))
 }
 
 func isIdentStart(c byte) bool {
@@ -233,7 +235,7 @@ type parser struct {
 // Compile 把表达式文本编译成 Expr。
 func Compile(src string) (Expr, error) {
 	if strings.TrimSpace(src) == "" {
-		return nil, fmt.Errorf("mapping: 表达式为空")
+		return nil, fmt.Errorf("mapping: empty expression")
 	}
 	p := &parser{lex: &lexer{src: src}, expr: src}
 	if err := p.advance(); err != nil {
@@ -244,7 +246,7 @@ func Compile(src string) (Expr, error) {
 		return nil, err
 	}
 	if p.cur.kind != tkEOF {
-		return nil, fmt.Errorf("mapping: %q 位置 %d：表达式后有多余内容 %q",
+		return nil, fmt.Errorf("mapping: %q at offset %d: unexpected trailing input %q",
 			src, p.cur.pos, p.cur.text)
 	}
 	return e, nil
@@ -299,7 +301,7 @@ func (p *parser) parseChain() (Expr, error) {
 				return nil, err
 			}
 			if p.cur.kind != tkIdent {
-				return nil, fmt.Errorf("mapping: %q 位置 %d：'.' 之后需要属性名",
+				return nil, fmt.Errorf("mapping: %q at offset %d: expected a property name after '.'",
 					p.expr, p.cur.pos)
 			}
 			base = &propExpr{base: base, name: p.cur.text}
@@ -312,19 +314,20 @@ func (p *parser) parseChain() (Expr, error) {
 			}
 			if p.cur.kind != tkNumber {
 				return nil, fmt.Errorf(
-					"mapping: %q 位置 %d：下标必须是整数（投影 [*] 与过滤 [?] 不在支持的子集内）",
+					"mapping: %q at offset %d: index must be an integer "+
+						"(projection [*] and filter [?] are not in the supported subset)",
 					p.expr, p.cur.pos)
 			}
 			n, err := strconv.Atoi(p.cur.text)
 			if err != nil {
-				return nil, fmt.Errorf("mapping: %q 位置 %d：无效下标 %q",
+				return nil, fmt.Errorf("mapping: %q at offset %d: invalid index %q",
 					p.expr, p.cur.pos, p.cur.text)
 			}
 			if err := p.advance(); err != nil {
 				return nil, err
 			}
 			if p.cur.kind != tkRBracket {
-				return nil, fmt.Errorf("mapping: %q 位置 %d：缺少 ']'", p.expr, p.cur.pos)
+				return nil, fmt.Errorf("mapping: %q at offset %d: missing ']'", p.expr, p.cur.pos)
 			}
 			base = &indexExpr{base: base, i: n}
 			if err := p.advance(); err != nil {
@@ -365,7 +368,7 @@ func (p *parser) parsePrimary() (Expr, error) {
 			return nil, err
 		}
 		if p.cur.kind != tkRParen {
-			return nil, fmt.Errorf("mapping: %q 位置 %d：缺少 ')'", p.expr, p.cur.pos)
+			return nil, fmt.Errorf("mapping: %q at offset %d: missing ')'", p.expr, p.cur.pos)
 		}
 		return e, p.advance()
 
@@ -388,14 +391,14 @@ func (p *parser) parsePrimary() (Expr, error) {
 		}
 		return p.parseCall(name, pos)
 	}
-	return nil, fmt.Errorf("mapping: %q 位置 %d：需要一个字段、字面量或函数调用",
+	return nil, fmt.Errorf("mapping: %q at offset %d: expected a field, literal, or function call",
 		p.expr, p.cur.pos)
 }
 
 func (p *parser) parseCall(name string, pos int) (Expr, error) {
 	fn := lookupFunc(name)
 	if fn == nil {
-		return nil, fmt.Errorf("mapping: %q 位置 %d：未知函数 %q（可用：%s）",
+		return nil, fmt.Errorf("mapping: %q at offset %d: unknown function %q (available: %s)",
 			p.expr, pos, name, strings.Join(FunctionNames(), ", "))
 	}
 	if err := p.advance(); err != nil { // 吃掉 '('
@@ -418,13 +421,13 @@ func (p *parser) parseCall(name string, pos int) (Expr, error) {
 		}
 	}
 	if p.cur.kind != tkRParen {
-		return nil, fmt.Errorf("mapping: %q 位置 %d：函数 %s 缺少 ')'", p.expr, p.cur.pos, name)
+		return nil, fmt.Errorf("mapping: %q at offset %d: missing ')' in call to %s", p.expr, p.cur.pos, name)
 	}
 	if err := p.advance(); err != nil {
 		return nil, err
 	}
 	if err := fn.checkArity(name, len(args)); err != nil {
-		return nil, fmt.Errorf("mapping: %q：%w", p.expr, err)
+		return nil, fmt.Errorf("mapping: %q: %w", p.expr, err)
 	}
 	return &callExpr{name: name, fn: fn, args: args}, nil
 }

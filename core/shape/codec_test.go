@@ -128,10 +128,10 @@ func TestCodecEncodeDecodeInverse(t *testing.T) {
 
 func TestCodecDecodeErrors(t *testing.T) {
 	for _, tc := range []struct{ def, raw, want string }{
-		{`{"type":"number"}`, "notanumber", "不是数字"},
-		{`{"type":"bool"}`, "maybe", "不是布尔值"},
-		{`{"type":"any"}`, "{bad json", "不是合法 JSON"},
-		{`{"type":"string","required":true}`, "", "必填"},
+		{`{"type":"number"}`, "notanumber", "is not a number"},
+		{`{"type":"bool"}`, "maybe", "is not a boolean"},
+		{`{"type":"any"}`, "{bad json", "is not valid JSON"},
+		{`{"type":"string","required":true}`, "", "required field"},
 	} {
 		c := codec(t, tc.def)
 		if _, err := c.Decode([]byte(tc.raw)); err == nil {
@@ -156,11 +156,11 @@ func TestCodecEncodeTypeErrors(t *testing.T) {
 // format 与类型不匹配必须在编译期发现，而不是每行才报。
 func TestCodecFormatValidatedAtCompileTime(t *testing.T) {
 	for _, tc := range []struct{ def, want string }{
-		{`{"type":"array","items":{"type":"string"},"format":"%s"}`, "不支持 format"},
-		{`{"type":"any","format":"%s"}`, "不支持 format"},
-		{`{"type":"number","format":"no verb"}`, "需要恰好一个动词"},
-		{`{"type":"number","format":"%d %d"}`, "需要恰好一个动词"},
-		{`{"type":"number","format":"%%"}`, "需要恰好一个动词"}, // 只有转义百分号，没有动词
+		{`{"type":"array","items":{"type":"string"},"format":"%s"}`, "does not support format"},
+		{`{"type":"any","format":"%s"}`, "does not support format"},
+		{`{"type":"number","format":"no verb"}`, "needs exactly one verb"},
+		{`{"type":"number","format":"%d %d"}`, "needs exactly one verb"},
+		{`{"type":"number","format":"%%"}`, "needs exactly one verb"}, // 只有转义百分号，没有动词
 	} {
 		_, err := shape.LoadCodec([]byte(tc.def))
 		if err == nil {

@@ -1,7 +1,8 @@
-"""ztpl 命令行 —— 快速体验 Z-Template。
+"""ztpl command line — a quick way to try Z-Template.
 
-完全建立在 ztpl Python SDK 之上：不碰 ctypes、不碰 .so。
-CLI 做不到的事就说明 SDK 缺东西 —— 这是对 SDK 能力面的一道约束。
+Built entirely on the ztpl Python SDK: it never touches ctypes or the .so.
+Anything the CLI cannot do means the SDK is missing something — that is a
+deliberate constraint on the SDK's surface.
 """
 
 __all__ = ["main"]

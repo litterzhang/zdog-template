@@ -33,11 +33,11 @@ _SO_NAMES = {
 
 
 class ZtplError(Exception):
-    """SDK 层的通用错误。"""
+    """Base error for the ztpl SDK."""
 
 
 class ZtplCompileError(ZtplError):
-    """模板或映射配置编译失败。"""
+    """The template, mapping, or shape configuration failed to compile."""
 
 
 def _candidates():
@@ -58,9 +58,9 @@ def lib_path() -> Path:
             return p
         tried.append(str(p))
     raise ZtplError(
-        "找不到 libztpl 共享库。请先构建：\n"
+        "libztpl shared library not found. Build it first:\n"
         "  go build -buildmode=c-shared -o cshared/libztpl.so ./cshared/\n"
-        "或用 ZTPL_LIB 环境变量指定路径。\n已尝试：\n  " + "\n  ".join(tried)
+        "or point ZTPL_LIB at an existing one.\nTried:\n  " + "\n  ".join(tried)
     )
 
 
@@ -95,16 +95,18 @@ def load():
     try:
         lib = ctypes.CDLL(str(path))
     except OSError as exc:
-        raise ZtplError(f"加载 {path} 失败: {exc}") from exc
+        raise ZtplError(f"failed to load {path}: {exc}") from exc
     for name, (restype, argtypes) in _SIGNATURES.items():
         try:
             fn = getattr(lib, name)
         except AttributeError as exc:
-            raise ZtplError(f"{path} 缺少符号 {name}，可能是版本不匹配") from exc
+            raise ZtplError(
+                f"{path} is missing symbol {name} — likely a version mismatch"
+            ) from exc
         fn.restype, fn.argtypes = restype, argtypes
     got = lib.ZtplAbiVersion()
     if got != ABI_VERSION:
-        raise ZtplError(f"ABI 版本不匹配: 库={got}, SDK={ABI_VERSION}")
+        raise ZtplError(f"ABI version mismatch: library={got}, SDK={ABI_VERSION}")
     _lib = lib
     return lib
 

@@ -142,7 +142,7 @@ func Serialize(dst []byte, v any) ([]byte, error) {
 		// 复合值退回 JSON
 		b, err := json.Marshal(v)
 		if err != nil {
-			return dst, fmt.Errorf("mapping: 无法序列化 %T: %w", v, err)
+			return dst, fmt.Errorf("mapping: cannot serialize %T: %w", v, err)
 		}
 		return append(dst, b...), nil
 	}

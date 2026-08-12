@@ -79,13 +79,13 @@ func (p *Pipeline) VerifyJSON(dst, in []byte) (out []byte, bad, total int) {
 		problems := []string{}
 
 		if err := p.src.VerifyLawA(line); err != nil {
-			problems = append(problems, "定律A: "+err.Error())
+			problems = append(problems, "law A: "+err.Error())
 		}
 		switch n := p.src.CountParses(line, 2); {
 		case n == 0:
-			problems = append(problems, "不匹配源模板")
+			problems = append(problems, "does not match the source template")
 		case n > 1:
-			problems = append(problems, fmt.Sprintf("歧义: 至少 %d 个解", n))
+			problems = append(problems, fmt.Sprintf("ambiguous: at least %d parses", n))
 		}
 
 		rep["ok"] = len(problems) == 0
@@ -195,7 +195,7 @@ func mapToContext(ctx *binding.Context, obj map[string]any) error {
 		}
 		b, err := scalarBytes(v)
 		if err != nil {
-			return fmt.Errorf("字段 %q: %w", name, err)
+			return fmt.Errorf("field %q: %w", name, err)
 		}
 		if err := ctx.Set(name, b); err != nil {
 			return err
@@ -208,12 +208,12 @@ func mapToContext(ctx *binding.Context, obj map[string]any) error {
 		}
 		items, ok := raw.([]any)
 		if !ok {
-			return fmt.Errorf("重复块 %q 需要一个数组，得到 %T", gname, raw)
+			return fmt.Errorf("block %q expects an array, got %T", gname, raw)
 		}
 		for _, it := range items {
 			m, ok := it.(map[string]any)
 			if !ok {
-				return fmt.Errorf("重复块 %q 的元素需要是对象，得到 %T", gname, it)
+				return fmt.Errorf("block %q items must be objects, got %T", gname, it)
 			}
 			sub, err := ctx.AppendGroupItem(gname)
 			if err != nil {

@@ -157,9 +157,9 @@ def test_parse_without_target():
     with Template("[${a}] ${b}") as t:
         assert not t.has_target
         assert t.parse_records("[x] y") == [{"a": "x", "b": "y"}]
-        with pytest.raises(ZtplError, match="需要目标模板"):
+        with pytest.raises(ZtplError, match="requires a target template"):
             t.transform(b"[x] y")
-        with pytest.raises(ZtplError, match="需要目标模板"):
+        with pytest.raises(ZtplError, match="requires a target template"):
             t.format(b"{}")
 
 
@@ -197,7 +197,7 @@ def test_verify_ok():
         assert rep.ok
         assert rep.total == 2
         assert rep.bad == 0
-        assert "全部通过" in str(rep)
+        assert "passed" in str(rep)
 
 
 def test_verify_detects_ambiguity():
@@ -205,14 +205,14 @@ def test_verify_detects_ambiguity():
         rep = t.verify_text("x.y.z!")
         assert not rep.ok
         assert rep.bad == 1
-        assert any("歧义" in p for prob in rep.problems for p in prob["problems"])
+        assert any("ambiguous" in p for prob in rep.problems for p in prob["problems"])
 
 
 def test_verify_detects_no_match():
     with Template("[${a}]") as t:
         rep = t.verify_text("nope")
         assert not rep.ok
-        assert any("不匹配" in p for prob in rep.problems for p in prob["problems"])
+        assert any("does not match" in p for prob in rep.problems for p in prob["problems"])
 
 
 def test_inspect_reports_structure():

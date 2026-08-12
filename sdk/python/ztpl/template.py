@@ -73,8 +73,8 @@ class VerifyReport:
 
     def __str__(self) -> str:
         if self.ok:
-            return f"{self.total} 行全部通过（定律 A + 无歧义）"
-        return f"{self.bad}/{self.total} 行有问题"
+            return f"all {self.total} line(s) passed (law A + unambiguous)"
+        return f"{self.bad}/{self.total} line(s) have problems"
 
 
 class Template:
@@ -107,9 +107,9 @@ class Template:
                  mapping: dict | None = None, shape: dict | None = None,
                  *, buffer_size: int = 1 << 16):
         if not isinstance(source, str):
-            raise TypeError("source 必须是 str")
+            raise TypeError("source must be a str")
         if target is not None and not isinstance(target, str):
-            raise TypeError("target 必须是 str 或 None")
+            raise TypeError("target must be a str or None")
         self._closed = True  # 先置位，__del__ 在构造失败时也能安全运行
         self._lib = load()
         self._has_target = bool(target)
@@ -125,7 +125,7 @@ class Template:
 
         h = self._lib.ZtplCompile(cfg, len(cfg))
         if h <= 0:
-            msg = self._last_error(h) or f"编译失败 (code={h})"
+            msg = self._last_error(h) or f"compilation failed (code={h})"
             self._lib.ZtplRelease(h)
             raise ZtplCompileError(msg)
 
@@ -203,34 +203,36 @@ class Template:
     def inspect(self) -> dict:
         """返回模板结构：执行层级、是否需要回溯、字段与重复块。"""
         if self._closed:
-            raise ZtplError("Template 已关闭")
+            raise ZtplError("Template is closed")
         buf = ctypes.create_string_buffer(8192)
         n = self._lib.ZtplInspect(self._h, buf, len(buf))
         if n < 0 and n > E_HANDLE:  # 负的所需长度
             buf = ctypes.create_string_buffer(-n)
             n = self._lib.ZtplInspect(self._h, buf, len(buf))
         if n < 0:
-            raise ZtplError(self._last_error(self._h) or f"inspect 失败 (code={n})")
+            raise ZtplError(self._last_error(self._h) or f"inspect failed (code={n})")
         return json.loads(ctypes.string_at(buf, n))
 
     # —— 内部 ——
 
     def _need_target(self, op: str) -> None:
         if not self._has_target:
-            raise ZtplError(f"{op} 需要目标模板；构造 Template 时请提供 target=")
+            raise ZtplError(f"{op}() requires a target template; pass target= when constructing Template")
 
     def _batch(self, fn, data: bytes) -> Result:
         if self._closed:
-            raise ZtplError("Template 已关闭")
+            raise ZtplError("Template is closed")
         if isinstance(data, str):
-            raise TypeError("批量接口接受 bytes；字符串请用 *_text / *_records 包装")
+            raise TypeError(
+                "batch methods take bytes; use the *_text / *_records helpers for str"
+            )
 
         n = self._call(fn, data)
         if n == E_SHORT_BUFFER:
             self._buf = ctypes.create_string_buffer(self._stats[2] + 1024)
             n = self._call(fn, data)
         if n < 0:
-            raise ZtplError(self._last_error(self._h) or f"调用失败 (code={n})")
+            raise ZtplError(self._last_error(self._h) or f"call failed (code={n})")
 
         # 用 string_at 而非 self._buf.raw[:n]：.raw 会先把**整个**缓冲
         # 物化成 bytes 再切片，代价是 O(buffer_size) 而非 O(n)。

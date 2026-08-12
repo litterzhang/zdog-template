@@ -64,7 +64,7 @@ func Compile(cfg *Config) (*Pipeline, error) {
 			cfg.Version, ConfigVersion)
 	}
 	if cfg.Source == "" {
-		return nil, fmt.Errorf("pipeline: source template 不能为空")
+		return nil, fmt.Errorf("pipeline: source template must not be empty")
 	}
 	src, err := engine.New(cfg.Source)
 	if err != nil {

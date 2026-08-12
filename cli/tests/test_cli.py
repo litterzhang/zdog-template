@@ -1,4 +1,4 @@
-"""CLI 端到端测试 —— 直接调 main()，覆盖真实的参数解析与退出码。"""
+"""CLI end-to-end tests — call main() directly to cover real arg parsing and exit codes."""
 
 import json
 
@@ -20,7 +20,7 @@ def test_demo_runs(capsys):
     code, out, _ = run(capsys, "demo")
     assert code == 0
     assert "Z-Template" in out
-    assert "歧义" in out          # demo 要展示 verify 抓到的问题
+    assert "ambiguous" in out     # the demo must surface what verify catches
     assert "ERROR host=web-1" in out
 
 
@@ -28,7 +28,7 @@ def test_parse(capsys):
     code, out, err = run(capsys, "parse", "-s", SRC, "--text", LOG)
     assert code == 0
     assert '"web-1"' in out
-    assert "1/1" in err           # 统计走 stderr，不污染 stdout
+    assert "1/1" in err           # stats go to stderr, keeping stdout clean
 
 
 def test_parse_ndjson_is_pipeable(capsys):
@@ -52,7 +52,7 @@ def test_convert(capsys):
 def test_convert_requires_target(capsys):
     code, _, err = run(capsys, "convert", "-s", SRC, "--text", LOG)
     assert code == 2
-    assert "需要目标模板" in err
+    assert "needs a target template" in err
 
 
 def test_format(capsys):
@@ -67,7 +67,7 @@ def test_format(capsys):
 def test_verify_ok(capsys):
     code, out, _ = run(capsys, "verify", "-s", SRC, "--text", LOG)
     assert code == 0
-    assert "全部通过" in out
+    assert "passed" in out
 
 
 def test_verify_detects_ambiguity(capsys):
@@ -75,7 +75,7 @@ def test_verify_detects_ambiguity(capsys):
         capsys, "verify", "-s", "[${ts}] ${lv} ${msg}", "--text", "[T1] a b c"
     )
     assert code == 1
-    assert "歧义" in out
+    assert "ambiguous" in out
 
 
 def test_verify_limit(capsys):
@@ -84,14 +84,14 @@ def test_verify_limit(capsys):
         capsys, "verify", "-s", "[${ts}] ${lv} ${msg}", "--text", text, "--limit", "3"
     )
     assert code == 1
-    assert "还有" in out
+    assert "and 17 more" in out
 
 
 def test_inspect(capsys):
     code, out, _ = run(capsys, "inspect", "-s", SRC)
     assert code == 0
     assert "T2/island" in out
-    assert "json 岛" in out
+    assert "json island" in out
 
 
 def test_inspect_json(capsys):
@@ -106,7 +106,7 @@ def test_inspect_shows_blocks(capsys):
         capsys, "inspect", "-s", "${each|name=xs,sep=;}${id}:${n}${end}"
     )
     assert code == 0
-    assert "重复块" in out and "xs" in out
+    assert "block" in out and "xs" in out
 
 
 def test_config_file(capsys, tmp_path):
@@ -134,26 +134,26 @@ def test_cli_args_override_config(capsys, tmp_path):
 def test_missing_source(capsys):
     code, _, err = run(capsys, "parse", "--text", "x")
     assert code == 2
-    assert "需要源模板" in err
+    assert "source template is required" in err
 
 
 def test_bad_template_is_actionable(capsys):
     code, _, err = run(capsys, "parse", "-s", "${a}${b}", "--text", "x")
     assert code == 2
-    assert "模板编译失败" in err
+    assert "failed to compile" in err
     assert "ambiguous" in err
 
 
 def test_bad_mapping_json(capsys):
     code, _, err = run(capsys, "parse", "-s", "[${a}]", "-m", "notjson", "--text", "[x]")
     assert code == 2
-    assert "不是合法 JSON" in err
+    assert "not valid JSON" in err
 
 
 def test_missing_config_file(capsys):
     code, _, err = run(capsys, "parse", "-c", "/nonexistent.json", "--text", "x")
     assert code == 2
-    assert "配置文件不存在" in err
+    assert "config file not found" in err
 
 
 def test_no_match_exit_code(capsys):
@@ -179,7 +179,7 @@ def test_version(capsys):
 def test_help_without_command(capsys):
     code, out, _ = run(capsys)
     assert code == 0
-    assert "命令" in out
+    assert "COMMAND" in out
 
 
 @pytest.mark.parametrize("cmd", ["parse", "convert", "format", "verify", "inspect", "demo"])

@@ -23,7 +23,7 @@ func (f *function) checkArity(name string, n int) error {
 		} else if f.maxArgs != f.minArgs {
 			want += "-" + strconv.Itoa(f.maxArgs)
 		}
-		return fmt.Errorf("函数 %s 需要 %s 个参数，实际 %d 个", name, want, n)
+		return fmt.Errorf("function %s takes %s argument(s), got %d", name, want, n)
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func asString(v any) (string, error) {
 		}
 		return strconv.FormatFloat(x, 'g', -1, 64), nil
 	}
-	return "", fmt.Errorf("需要字符串，得到 %T", v)
+	return "", fmt.Errorf("expected a string, got %T", v)
 }
 
 func asNumber(v any) (float64, error) {
@@ -110,11 +110,11 @@ func asNumber(v any) (float64, error) {
 	case string:
 		f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
 		if err != nil {
-			return 0, fmt.Errorf("%q 不是数字", x)
+			return 0, fmt.Errorf("%q is not a number", x)
 		}
 		return f, nil
 	}
-	return 0, fmt.Errorf("需要数字，得到 %T", v)
+	return 0, fmt.Errorf("expected a number, got %T", v)
 }
 
 func fnLength(args []any) (any, error) {
@@ -128,7 +128,7 @@ func fnLength(args []any) (any, error) {
 	case map[string]any:
 		return float64(len(x)), nil
 	}
-	return nil, fmt.Errorf("length 不支持 %T", args[0])
+	return nil, fmt.Errorf("length() does not support %T", args[0])
 }
 
 func fnToString(args []any) (any, error) { return asString(args[0]) }
@@ -175,7 +175,7 @@ func fnJoin(args []any) (any, error) {
 		if args[1] == nil {
 			return "", nil
 		}
-		return nil, fmt.Errorf("join 的第二个参数需要数组，得到 %T", args[1])
+		return nil, fmt.Errorf("join() expects an array as its second argument, got %T", args[1])
 	}
 	parts := make([]string, len(arr))
 	for i, v := range arr {
@@ -253,7 +253,7 @@ func fnContains(args []any) (any, error) {
 	case nil:
 		return false, nil
 	}
-	return nil, fmt.Errorf("contains 不支持 %T", args[0])
+	return nil, fmt.Errorf("contains() does not support %T", args[0])
 }
 
 func fnReverse(args []any) (any, error) {
@@ -273,7 +273,7 @@ func fnReverse(args []any) (any, error) {
 	case nil:
 		return nil, nil
 	}
-	return nil, fmt.Errorf("reverse 不支持 %T", args[0])
+	return nil, fmt.Errorf("reverse() does not support %T", args[0])
 }
 
 func fnSort(args []any) (any, error) {
@@ -320,7 +320,7 @@ func fnSplit(args []any) (any, error) {
 		return nil, err
 	}
 	if sep == "" {
-		return nil, fmt.Errorf("split 的分隔符不能为空")
+		return nil, fmt.Errorf("split() separator must not be empty")
 	}
 	parts := strings.Split(s, sep)
 	out := make([]any, len(parts))

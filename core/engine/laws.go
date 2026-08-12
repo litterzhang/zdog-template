@@ -18,10 +18,10 @@ type LawViolation struct {
 
 func (v *LawViolation) Error() string {
 	if v.Field != "" {
-		return fmt.Sprintf("定律 %s 违反 (字段 %q): %s\n  期望: %q\n  实际: %q",
+		return fmt.Sprintf("law %s violated (field %q): %s\n  want: %q\n  got:  %q",
 			v.Law, v.Field, v.Detail, v.Expected, v.Actual)
 	}
-	return fmt.Sprintf("定律 %s 违反: %s\n  期望: %q\n  实际: %q",
+	return fmt.Sprintf("law %s violated: %s\n  want: %q\n  got:  %q",
 		v.Law, v.Detail, v.Expected, v.Actual)
 }
 
@@ -46,7 +46,7 @@ func (e *Engine) VerifyLawA(src []byte) error {
 			Law:      "A",
 			Expected: src,
 			Actual:   out,
-			Detail:   "模板未能从绑定完整还原源文" + firstDiff(src, out),
+			Detail:   "template could not reconstruct the source from its bindings" + firstDiff(src, out),
 		}
 	}
 	return nil
@@ -66,7 +66,7 @@ func (e *Engine) VerifyLawB(ctx *binding.Context) error {
 		return &LawViolation{
 			Law:      "B",
 			Expected: out,
-			Detail:   "渲染结果无法被同一模板解析回来: " + err.Error(),
+			Detail:   "rendered output cannot be parsed back by the same template: " + err.Error(),
 		}
 	}
 	for _, name := range e.Names() {
@@ -76,12 +76,12 @@ func (e *Engine) VerifyLawB(ctx *binding.Context) error {
 			continue // 未填充的槽位不参与比较
 		}
 		if !okGot {
-			return &LawViolation{Law: "B", Field: name, Expected: want, Detail: "回读后该字段缺失"}
+			return &LawViolation{Law: "B", Field: name, Expected: want, Detail: "field is missing after re-parsing"}
 		}
 		if !bytes.Equal(want, got) {
 			return &LawViolation{
 				Law: "B", Field: name, Expected: want, Actual: got,
-				Detail: "回读后字段值发生变化（多半是缺少定界符导致边界漂移）",
+				Detail: "field value changed after re-parsing (usually a missing delimiter causing boundary drift)",
 			}
 		}
 	}
@@ -96,11 +96,11 @@ func firstDiff(a, b []byte) string {
 	}
 	for i := 0; i < n; i++ {
 		if a[i] != b[i] {
-			return fmt.Sprintf("（首个差异在偏移 %d）", i)
+			return fmt.Sprintf(" (first difference at offset %d)", i)
 		}
 	}
 	if len(a) != len(b) {
-		return fmt.Sprintf("（长度不同: %d vs %d，前 %d 字节相同）", len(a), len(b), n)
+		return fmt.Sprintf(" (lengths differ: %d vs %d; first %d bytes match)", len(a), len(b), n)
 	}
 	return ""
 }
@@ -117,8 +117,9 @@ func (e *ErrAmbiguous) Error() string {
 		s = s[:120]
 	}
 	return fmt.Sprintf(
-		"engine: 模板对输入 %q 有至少 %d 个解 —— 首个解依赖算子顺序，"+
-			"换个输入就可能给出不同答案。请加字面量分隔符或给洞加 expr 约束。",
+		"engine: template has at least %d parses for input %q — the chosen one depends on "+
+			"operator order, so a different input may yield a different answer. "+
+			"Add a literal delimiter, or constrain a hole with expr.",
 		s, e.Count)
 }
 
