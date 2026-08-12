@@ -104,3 +104,42 @@ func firstDiff(a, b []byte) string {
 	}
 	return ""
 }
+
+// ErrAmbiguous 表示模板对该输入有多于一个解。
+type ErrAmbiguous struct {
+	Input []byte
+	Count int
+}
+
+func (e *ErrAmbiguous) Error() string {
+	s := e.Input
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return fmt.Sprintf(
+		"engine: 模板对输入 %q 有至少 %d 个解 —— 首个解依赖算子顺序，"+
+			"换个输入就可能给出不同答案。请加字面量分隔符或给洞加 expr 约束。",
+		s, e.Count)
+}
+
+// VerifyUnambiguous 校验模板对该输入只有唯一解。
+//
+// 歧义是模板设计的 bug，而不是运行期的偶然：`${a}.${b}!` 对 "x.y.z!" 既可以
+// 解成 a="x" 也可以解成 a="x.y"，引擎只能挑一个。这类问题在开发期用本方法
+// 暴露，好过上线后靠数据暴露。
+func (e *Engine) VerifyUnambiguous(src []byte) error {
+	n := e.pl.CountParses(src, 2)
+	switch n {
+	case 0:
+		return &ErrNoMatch{Input: src}
+	case 1:
+		return nil
+	default:
+		return &ErrAmbiguous{Input: src, Count: n}
+	}
+}
+
+// CountParses 统计最多 limit 个解，供调试与歧义分析使用。
+func (e *Engine) CountParses(src []byte, limit int) int {
+	return e.pl.CountParses(src, limit)
+}

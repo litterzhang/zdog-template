@@ -1,0 +1,14 @@
+{
+  "name": "cross-op-backtracking",
+  "description": "跨算子回溯：扁平引擎在每个定界点取首次匹配，首个 '/' 之后是 \"b/{...}\" 不是 JSON，会失败。正解是 a=\"a/b\"。回溯只在扁平引擎失败后启用，因此匹配的行不付代价。",
+  "config": {
+    "version": 1,
+    "source": "${a}/${json|name=p}",
+    "mapping": { "path": "a", "data": "p" },
+    "target": "${path} => ${data}"
+  },
+  "input": "a/b/c/{\"x\":1,\"y\":[2,3]}",
+  "output": "a/b/c => {\"x\":1,\"y\":[2,3]}\n",
+  "tier": "T2/island",
+  "laws": ["A"]
+}

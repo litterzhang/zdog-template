@@ -25,6 +25,20 @@ var NoSpan = Span{Start: -1, End: -1}
 // 字节片段，因此读取时必须逐层带上父级的基址（见 binding.Context）。
 func (p *Plan) Parse(src []byte, r *Result) bool {
 	p.ensure(r)
+	if p.parseFlat(src, r) {
+		return true
+	}
+	if !p.backtrack {
+		return false
+	}
+	// 扁平引擎在每个定界点取首次匹配；它成功时回溯引擎的第一条路径与之相同，
+	// 所以只有扁平引擎失败的输入才需要付回溯代价。
+	p.ensure(r)
+	return p.parseBacktrack(src, r)
+}
+
+// parseFlat 是扁平快路径：每个定界点取首次匹配，零分配、无函数调用。
+func (p *Plan) parseFlat(src []byte, r *Result) bool {
 	pos := 0
 	for k := range p.ops {
 		op := &p.ops[k]

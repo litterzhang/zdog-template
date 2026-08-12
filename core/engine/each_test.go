@@ -200,3 +200,31 @@ func TestEachTier(t *testing.T) {
 		t.Errorf("tier = %v, want %v", got, plan.TierEach)
 	}
 }
+
+func TestVerifyUnambiguous(t *testing.T) {
+	// 有唯一解
+	ok := newEngine(t, "[${ts}] ${lv}")
+	if err := ok.VerifyUnambiguous([]byte("[a] b")); err != nil {
+		t.Errorf("唯一解模板不应报歧义: %v", err)
+	}
+	// 有多个解
+	amb := newEngine(t, `${a}.${b}!`)
+	err := amb.VerifyUnambiguous([]byte("x.y.z!"))
+	if err == nil {
+		t.Fatal("应当检测出歧义")
+	}
+	var ea *engine.ErrAmbiguous
+	if !asErr(err, &ea) {
+		t.Fatalf("want *ErrAmbiguous, got %T: %v", err, err)
+	}
+	if ea.Count < 2 {
+		t.Errorf("Count = %d, want >= 2", ea.Count)
+	}
+	if !strings.Contains(err.Error(), "字面量分隔符") {
+		t.Errorf("错误信息应给出可操作建议: %v", err)
+	}
+	// 无解
+	if err := ok.VerifyUnambiguous([]byte("nope")); err == nil {
+		t.Error("无解时应报 ErrNoMatch")
+	}
+}

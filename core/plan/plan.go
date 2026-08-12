@@ -100,6 +100,9 @@ type Plan struct {
 	// groups 是组槽位，与 names 是两套独立的槽位空间。
 	groups     []GroupInfo
 	groupIndex map[string]int
+	// backtrack 由编译期分析决定：只有"选择点之后还跟着可能失败的算子"
+	// 的计划才需要回溯，其余走扁平快路径。
+	backtrack bool
 }
 
 // Ops 返回算子序列。调用方不得修改。
@@ -149,8 +152,8 @@ func (p *Plan) Group(slot int) *GroupInfo {
 func (p *Plan) Tier() Tier { return p.tier }
 
 func (p *Plan) String() string {
-	return fmt.Sprintf("plan{tier=%s, ops=%d, slots=%d, groups=%d}",
-		p.tier, len(p.ops), len(p.names), len(p.groups))
+	return fmt.Sprintf("plan{tier=%s, ops=%d, slots=%d, groups=%d, backtrack=%v}",
+		p.tier, len(p.ops), len(p.names), len(p.groups), p.backtrack)
 }
 
 // Compile 把 Element 树编译成执行计划。
@@ -266,6 +269,7 @@ func Compile(elements []model.Element) (*Plan, error) {
 			return nil, fmt.Errorf("plan: element %q (tag %s) is not compilable", el.Name(), el.Tag())
 		}
 	}
+	p.backtrack = needsBacktrack(p.ops)
 	return p, nil
 }
 
