@@ -53,8 +53,12 @@ func (c *Codec) validateFormat() error {
 	}
 	switch c.node.Type() {
 	case model.TypeNumber, model.TypeString:
-		if strings.Count(f, "%") != 1 || strings.HasSuffix(f, "%") {
-			return fmt.Errorf("shape: format %q 必须恰好含一个动词，如 %%.2f 或 %%-10s", f)
+		// %% 是转义的字面百分号，不是动词 —— "%.1f%%" 这种写法完全合法。
+		verbs := strings.Count(strings.ReplaceAll(f, "%%", ""), "%")
+		if verbs != 1 {
+			return fmt.Errorf(
+				"shape: format %q 需要恰好一个动词（如 %%.2f、%%-10s）；"+
+					"字面百分号请写 %%%%，例如 %%.1f%%%%", f)
 		}
 		return nil
 	default:

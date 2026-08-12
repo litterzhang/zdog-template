@@ -61,6 +61,9 @@ func TestCodecFormat(t *testing.T) {
 		{`{"type":"number","format":"%d"}`, 42.0, "%!d(float64=42)"}, // 类型不匹配会被 fmt 标出来
 		{`{"type":"string","format":"%-6s|"}`, "ab", "ab    |"},
 		{`{"type":"string","format":"[%s]"}`, "x", "[x]"},
+		// %% 是字面百分号，不是动词 —— 百分比格式很常用
+		{`{"type":"number","format":"%.1f%%"}`, 93.456, "93.5%"},
+		{`{"type":"number","format":"%d%%"}`, 42.0, "%!d(float64=42)%"},
 	} {
 		if got := enc(t, codec(t, tc.def), tc.in); got != tc.want {
 			t.Errorf("%s Encode(%v) = %q, want %q", tc.def, tc.in, got, tc.want)
@@ -155,8 +158,9 @@ func TestCodecFormatValidatedAtCompileTime(t *testing.T) {
 	for _, tc := range []struct{ def, want string }{
 		{`{"type":"array","items":{"type":"string"},"format":"%s"}`, "不支持 format"},
 		{`{"type":"any","format":"%s"}`, "不支持 format"},
-		{`{"type":"number","format":"no verb"}`, "必须恰好含一个动词"},
-		{`{"type":"number","format":"%d %d"}`, "必须恰好含一个动词"},
+		{`{"type":"number","format":"no verb"}`, "需要恰好一个动词"},
+		{`{"type":"number","format":"%d %d"}`, "需要恰好一个动词"},
+		{`{"type":"number","format":"%%"}`, "需要恰好一个动词"}, // 只有转义百分号，没有动词
 	} {
 		_, err := shape.LoadCodec([]byte(tc.def))
 		if err == nil {

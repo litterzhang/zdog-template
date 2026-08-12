@@ -164,6 +164,9 @@ func (l *lexer) next() (token, error) {
 			return token{tkOr, "||", start}, nil
 		}
 		return token{}, fmt.Errorf("mapping: 位置 %d：单个 '|'（管道）不在支持的子集内", start)
+	case '"':
+		return token{}, fmt.Errorf(
+			"mapping: 位置 %d：字符串字面量请用**单引号**，如 'text'（双引号在这里没有含义）", start)
 	case '*':
 		return token{}, fmt.Errorf(
 			"mapping: 位置 %d：投影 [*] 不在支持的子集内 —— 重复结构请用模板的 ${each} 块展开", start)
