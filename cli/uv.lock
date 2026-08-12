@@ -142,7 +142,7 @@ wheels = [
 
 [[package]]
 name = "zdog-template"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "../sdk/python" }
 
 [package.metadata]
@@ -155,7 +155,7 @@ dev = [
 
 [[package]]
 name = "zdog-template-cli"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "zdog-template" },

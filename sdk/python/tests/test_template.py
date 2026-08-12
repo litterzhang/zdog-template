@@ -404,3 +404,23 @@ def test_wheel_tag_env_empty_string_falls_back(monkeypatch):
 
     monkeypatch.setenv("ZTPL_WHEEL_TAG", "py3-none-manylinux_2_28_x86_64")
     assert wheel_tag() == "py3-none-manylinux_2_28_x86_64"
+
+
+def test_version_matches_pyproject():
+    """回归：__version__ 曾经写死在 __init__.py 里，改包名时漏了同步。
+
+    发版要改的地方越少越好。版本号的唯一真相是 pyproject.toml —— 运行时
+    从包元数据读，这个测试保证两者不会再各说各话。
+    """
+    import re
+
+    import ztemplate
+
+    pyproject = pathlib.Path(__file__).resolve().parents[1] / "pyproject.toml"
+    declared = re.search(r'^version = "([^"]+)"', pyproject.read_text(), re.M)
+    assert declared, "pyproject.toml 里找不到 version"
+
+    # 源码树里直接跑（没 pip install 过）时元数据不存在，回退值是约定的哨兵，
+    # 不参与比对 —— 装过的环境里才有意义。
+    if ztemplate.__version__ != "0.0.0+dev":
+        assert ztemplate.__version__ == declared.group(1)

@@ -1,6 +1,6 @@
 [project]
 name = "zdog-template-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "Z-Template 命令行 —— 快速体验双向模板：parse / convert / verify / inspect"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ keywords = ["template", "cli", "text-transformation", "log-parsing"]
 # CLI 完全建立在 Python SDK 之上 —— 它不碰 ctypes、不碰 .so，
 # 只用 ztpl 的公开 API。这保证 SDK 的能力面足够完整：
 # CLI 做不到的事，就说明 SDK 缺东西。
-dependencies = ["zdog-template"]
+dependencies = ["zdog-template>=0.1.1"]
 
 [project.scripts]
 ztpl = "ztemplate_cli.main:main"

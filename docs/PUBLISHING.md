@@ -4,33 +4,41 @@
 
 | 包 | 内容 | wheel 类型 |
 |---|---|---|
-| `ztpl` | Python SDK + 平台相关的 `libztpl.so` | **每平台一个** |
-| `zdog-template-cli` | 命令行，纯 Python，依赖 `ztpl` | 一个通吃 |
+| `zdog-template` | Python SDK + 平台相关的 `libztpl.so` | **每平台一个** |
+| `zdog-template-cli` | 命令行，纯 Python，依赖 `zdog-template` | 一个通吃 |
 
 ## 一次性准备：Trusted Publishing
 
 用 OIDC 发布，**不需要在仓库里存 API token**。
 
 包名首次发布前 PyPI 上还没有项目，所以要用 **pending publisher**：
-<https://pypi.org/manage/account/publishing/> → 添加，两个包各填一次
-（`ztpl` 与 `zdog-template-cli`）：
+<https://pypi.org/manage/account/publishing/> → 添加，两个包各填一次：
 
-| 字段 | 值 |
-|---|---|
-| PyPI Project Name | `ztpl` / `zdog-template-cli` |
-| Owner | `litterzhang` |
-| Repository name | `zdog-template` |
-| Workflow name | `release.yml` |
-| Environment name | `release` |
+| 字段 | SDK | CLI |
+|---|---|---|
+| PyPI Project Name | `zdog-template` | `zdog-template-cli` |
+| Owner | `litterzhang` | `litterzhang` |
+| Repository name | `zdog-template` | `zdog-template` |
+| Workflow name | `release.yml` | `release.yml` |
+| Environment name | `release-sdk` | `release-cli` |
 
-GitHub 侧的 `release` environment 已由 `make gh-setup` 建好。
-建议在它上面加一条人工审批（Settings → Environments → release →
-Required reviewers），这样每次发布都要点一下确认。
+**两个包必须用不同的 environment。** PyPI 的可信发布者是按
+`(owner, repo, workflow, environment)` 匹配的 —— 共用一个环境意味着任何一个
+发布 job 拿到的 OIDC 令牌对两个项目都有效，CLI 的构建被污染就能推 SDK。
+分开之后每个 job 只能发自己那个包，也便于分别设审批。
+
+GitHub 侧这两个 environment 已由 `make gh-setup` 建好。
+建议各加一条人工审批（Settings → Environments → 选中 → Required reviewers），
+这样每次发布都要点一下确认。
 
 ## 发布
 
+版本号在 `sdk/python/pyproject.toml` 和 `cli/pyproject.toml` 里，两个包锁步。
+改完、更新 CHANGELOG（**必须有对应版本的一节**，否则 `github-release` job 会
+直接失败）、提交，然后：
+
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.1 && git push origin v0.1.1
 ```
 
 workflow 会构建各平台 wheel、在干净环境里冒烟验证，然后发到 PyPI。

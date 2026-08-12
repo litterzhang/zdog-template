@@ -17,10 +17,18 @@ config file to be rewritten, and vice versa.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-12
+
+Documentation and packaging only. No change to the core, the ABI, or the
+pipeline config schema — config version 1 and ABI version 3 both stand, so
+0.1.0 clients keep working untouched.
+
 ### Added
 
 - Version classifiers in package metadata, so PyPI can filter by Python
   version and the `pyversions` badge shows the real range instead of just "3".
+- Status badges on both READMEs: CI, the two PyPI versions, latest release,
+  Python and Go versions, license.
 
 ### Changed
 
@@ -28,6 +36,21 @@ config file to be rewritten, and vice versa.
   `README.zh-CN.md`.
 - Quick start uses `pip` / `uv` instead of clone-and-build, now that wheels
   are on PyPI. Building from source moved to its own section.
+- `zdog-template-cli` now requires `zdog-template>=0.1.1` instead of any
+  version. The two are released from one tag, so an unbounded dependency
+  only meant that a future CLI feature could silently land against an SDK
+  too old to support it.
+
+### Fixed
+
+- `ztemplate.__version__` was hard-coded and had already drifted — it read
+  `0.1.0` regardless of what was installed. It now comes from package
+  metadata, the way the CLI already did it.
+- `docs/PUBLISHING.md` still described the pre-rename package name and a
+  single `release` environment; both changed before 0.1.0 shipped and the
+  doc did not follow.
+- The 0.1.0 notes below described the C ABI as having 5 functions. It has 9.
+  Corrected here; the published 0.1.0 release notes keep the original text.
 
 ## [0.1.0] — 2026-08-12
 
@@ -75,7 +98,7 @@ templates polynomial rather than exponential.
 **Streaming** (`*_stream`) — memory bounded by chunk size, independent of
 input size. A 122 MB log costs ~0 MB extra RSS.
 
-**A 5-function C ABI**, a `ctypes` Python SDK with no runtime dependencies,
+**A 9-function C ABI**, a `ctypes` Python SDK with no runtime dependencies,
 and a CLI (`ztpl parse / convert / format / verify / inspect / demo`).
 
 **A conformance suite** (`conformance/cases/*.json`) run by both Go and
@@ -106,5 +129,6 @@ and workaround. The design document doubles as a decision log: it records the
 measurements, including the ones that killed approaches that seemed obviously
 right at the time.
 
-[Unreleased]: https://github.com/litterzhang/zdog-template/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/litterzhang/zdog-template/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/litterzhang/zdog-template/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/litterzhang/zdog-template/releases/tag/v0.1.0

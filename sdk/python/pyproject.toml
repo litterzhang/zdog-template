@@ -1,6 +1,6 @@
 [project]
 name = "zdog-template"
-version = "0.1.0"
+version = "0.1.1"
 description = "Z-Template —— 双向模板：一份模板同时用于解析与格式化，外加声明式文本转换流水线"
 readme = "README.md"
 requires-python = ">=3.10"
