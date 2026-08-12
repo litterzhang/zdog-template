@@ -129,6 +129,9 @@ type Scratch struct {
 	arena []byte
 }
 
+// Result 暴露底层解析结果容器，供基准测试与需要细粒度控制的调用方使用。
+func (s *Scratch) Result() *plan.Result { return s.res }
+
 // NewScratch 为该流水线分配工作区。每个 goroutine 应持有自己的实例。
 func (p *Pipeline) NewScratch() *Scratch {
 	s := &Scratch{}
