@@ -160,12 +160,13 @@ func (p *Plan) search(src []byte, r *Result, opIdx, pos int, visit visitor) bool
 
 	case OpEach:
 		g := &p.groups[op.Slot]
-		// 块的终止字面量同样要枚举各次出现 —— 内容里可能含有它。
+		gr := &r.Groups[op.Slot]
+		// 两层都要枚举：块的终止字面量可能在内容里出现多次，
+		// 块内部的迭代切分也可能有多种分法。
 		if len(op.Lit) == 0 {
-			if !parseGroup(g, src[pos:], &r.Groups[op.Slot], r.Base+int32(pos)) {
-				return true
-			}
-			return p.search(src, r, opIdx+1, len(src), visit)
+			return searchGroup(g, src[pos:], gr, r.Base+int32(pos), func() bool {
+				return p.search(src, r, opIdx+1, len(src), visit)
+			})
 		}
 		off := 0
 		for {
@@ -174,15 +175,79 @@ func (p *Plan) search(src []byte, r *Result, opIdx, pos int, visit visitor) bool
 				return true
 			}
 			regionEnd := pos + off + j
-			if parseGroup(g, src[pos:regionEnd], &r.Groups[op.Slot], r.Base+int32(pos)) {
-				if !p.search(src, r, opIdx+1, regionEnd+len(op.Lit), visit) {
-					return false
-				}
+			cont := func() bool {
+				return p.search(src, r, opIdx+1, regionEnd+len(op.Lit), visit)
+			}
+			if !searchGroup(g, src[pos:regionEnd], gr, r.Base+int32(pos), cont) {
+				return false
 			}
 			off = regionEnd - pos + 1
 		}
 	}
 	return true
+}
+
+// searchGroup 枚举 region 的**所有**合法切分，每得到一种完整切分就调用 k。
+//
+// 扁平的 parseGroup 对每个迭代取"能被子计划完整消费的最短前缀"，一旦选定
+// 就不再回头。于是这类输入会失败：
+//
+//	模板 ${each|name=xs,sep=;}${k}:${v}${end}   输入 "a:1;b;c"
+//	  迭代 1 取最短的 "a:1"（能解析），剩下 "b;c" 怎么切都不成立 -> 失败
+//	  正解是让迭代 1 退让，整串吞掉：k="a", v="1;b;c"
+//
+// 所以块内切分也必须参与回溯。与外层同理，只在扁平引擎失败后才走到这里。
+func searchGroup(g *GroupInfo, region []byte, out *GroupResult, base int32, k func() bool) bool {
+	out.Items = out.Items[:0]
+	if len(region) == 0 {
+		if g.AllowEmpty {
+			return k()
+		}
+		return true
+	}
+	return splitFrom(g, region, out, base, 0, k)
+}
+
+// splitFrom 从 region[pos:] 起枚举「下一个迭代」的所有可能边界。
+func splitFrom(g *GroupInfo, region []byte, out *GroupResult, base int32, pos int, k func() bool) bool {
+	searchFrom := pos
+	for {
+		j := bytes.Index(region[searchFrom:], g.Sep)
+		last := j < 0
+
+		var item []byte
+		next := -1
+		if last {
+			item = region[pos:]
+		} else {
+			item = region[pos : searchFrom+j]
+			next = searchFrom + j + len(g.Sep)
+		}
+
+		out.Items = GrowResults(out.Items)
+		ir := &out.Items[len(out.Items)-1]
+		ir.Base = base + int32(pos)
+		if g.Sub.Parse(item, ir) {
+			ok := true
+			if last {
+				ok = k() // 吃到区间结尾，这是一种完整切分
+			} else {
+				ok = splitFrom(g, region, out, base, next, k)
+			}
+			if !ok {
+				return false // 调用方要求停止，保留现场
+			}
+		}
+		out.Items = out.Items[:len(out.Items)-1] // 回退这个迭代，试更长的边界
+
+		if last {
+			return true
+		}
+		searchFrom = searchFrom + j + 1
+		if searchFrom > len(region) {
+			return true
+		}
+	}
 }
 
 // parseBacktrack 找第一个解。

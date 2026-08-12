@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"unsafe"
@@ -40,12 +41,22 @@ type groupRoute struct {
 }
 
 // buildRoute 按名字（经 mapping 重映射）把目标计划接到源计划上。
-func compileCodecs(defs map[string]json.RawMessage) (map[string]*shape.Codec, error) {
+// codecTable 的键既可以是裸字段名，也可以是路径限定名（`xs[].n`）。
+// 值为 nil 表示"该路径上显式不套 shape"（配置里写 null）。
+type codecTable map[string]*shape.Codec
+
+func compileCodecs(defs map[string]json.RawMessage) (codecTable, error) {
 	if len(defs) == 0 {
 		return nil, nil
 	}
-	out := make(map[string]*shape.Codec, len(defs))
+	out := make(codecTable, len(defs))
 	for name, raw := range defs {
+		// 显式 null：在这条路径上关掉 shape。
+		// 有了它才能表达"只格式化外层的 n，块内的 n 保持原样"。
+		if string(bytes.TrimSpace(raw)) == "null" {
+			out[name] = nil
+			continue
+		}
 		c, err := shape.LoadCodec(raw)
 		if err != nil {
 			return nil, fmt.Errorf("pipeline: invalid shape for field %q: %w", name, err)
@@ -55,12 +66,31 @@ func compileCodecs(defs map[string]json.RawMessage) (map[string]*shape.Codec, er
 	return out, nil
 }
 
+// lookup 先试路径限定名，再回退裸名。
+//
+// 于是 `{"n": …, "xs[].n": …}` 能分别作用于外层与块内；只写 `n` 时
+// 仍作用于所有层级（向后兼容，也是大多数场景想要的）。
+func (t codecTable) lookup(path, name string) (*shape.Codec, bool) {
+	if t == nil {
+		return nil, false
+	}
+	if c, ok := t[path+name]; ok {
+		return c, true
+	}
+	c, ok := t[name]
+	return c, ok
+}
+
 func buildRoute(src, tgt *plan.Plan, m map[string]string,
-	codecs map[string]*shape.Codec, path string) (route, error) {
+	codecs codecTable, path string) (route, error) {
 	r := route{scalars: make([]slotSource, tgt.NumSlots()), fast: true}
 
 	for i, tName := range tgt.Names() {
-		raw, mapped := m[tName]
+		// 与 shape 同理：路径限定名优先，再回退裸名。
+		raw, mapped := m[path+tName]
+		if !mapped {
+			raw, mapped = m[tName]
+		}
 		if !mapped {
 			raw = tName // 同名直通
 		}
@@ -71,7 +101,7 @@ func buildRoute(src, tgt *plan.Plan, m map[string]string,
 				path, tName, raw, err)
 		}
 
-		cod := codecs[tName]
+		cod, _ := codecs.lookup(path, tName)
 
 		// 裸字段名 -> 零拷贝快路径。声明了 shape 的字段不走这里：
 		// 按类型格式化意味着输出不再等于源文字节。
@@ -98,14 +128,25 @@ func buildRoute(src, tgt *plan.Plan, m map[string]string,
 	for g := 0; g < tgt.NumGroups(); g++ {
 		info := tgt.Group(g)
 		sName := info.Name
-		if mm, ok := m[info.Name]; ok {
+		if mm, ok := m[path+info.Name]; ok {
+			sName = mm
+		} else if mm, ok := m[info.Name]; ok {
 			sName = mm
 		}
 		sSlot, ok := src.GroupSlot(sName)
 		if !ok {
+			// 组只支持同名/重命名，不支持表达式。把这一点说清楚，
+			// 否则用户看到 "unknown source block" 会以为是名字打错了。
+			if _, err := mapping.Compile(sName); err == nil && !isPlainName(sName) {
+				return route{}, fmt.Errorf(
+					"pipeline: target block %s%q maps to %q, but repeat blocks only "+
+						"support a plain source block name (expressions are not supported "+
+						"on blocks; available: %v)",
+					path, info.Name, sName, blockNames(src))
+			}
 			return route{}, fmt.Errorf(
-				"pipeline: target block %s%q maps to unknown source block %q",
-				path, info.Name, sName)
+				"pipeline: target block %s%q maps to unknown source block %q (available: %v)",
+				path, info.Name, sName, blockNames(src))
 		}
 		sub, err := buildRoute(src.Group(sSlot).Sub, info.Sub, m, codecs, path+info.Name+"[].")
 		if err != nil {
@@ -257,4 +298,23 @@ func (r *route) fill(d *plan.Data, res *plan.Result, src []byte, s *Scratch, p *
 		}
 	}
 	return true
+}
+
+// isPlainName 报告 s 是否就是一个裸标识符（没有路径、下标、函数调用）。
+func isPlainName(s string) bool {
+	e, err := mapping.Compile(s)
+	if err != nil {
+		return false
+	}
+	_, bare := mapping.IsBareField(e)
+	return bare
+}
+
+func blockNames(p *plan.Plan) []string {
+	gs := p.Groups()
+	out := make([]string, len(gs))
+	for i := range gs {
+		out[i] = gs[i].Name
+	}
+	return out
 }

@@ -230,3 +230,91 @@ func TestFindChainNeedsNoBacktrack(t *testing.T) {
 		}
 	}
 }
+
+// 块内的迭代切分也必须参与回溯。
+//
+// 扁平引擎对每个迭代取"能被子计划完整消费的最短前缀"，一旦选定就不回头：
+//
+//	模板 ${each|name=xs,sep=;}${k}:${v}${end}  输入 "a:1;b;c"
+//	迭代 1 取最短的 "a:1"，剩下 "b;c" 怎么切都不成立 -> 失败
+//	正解是让迭代 1 退让，整串吞掉
+func TestGroupSplitBacktracks(t *testing.T) {
+	p := compile(t, "${each|name=xs,sep=;}${k}:${v}${end}")
+	if !p.NeedsBacktrack() {
+		t.Fatal("块结尾的模板应当需要回溯")
+	}
+	for _, tc := range []struct {
+		input string
+		items [][2]string // 每个迭代的 (k, v)
+	}{
+		{"a:1;b:2", [][2]string{{"a", "1"}, {"b", "2"}}},
+		{"a:1;b;c", [][2]string{{"a", "1;b;c"}}},
+		{"a:1;b;c:2;d", [][2]string{{"a", "1"}, {"b;c", "2;d"}}},
+	} {
+		res := p.NewResult()
+		if !p.Parse([]byte(tc.input), res) {
+			t.Errorf("parse(%q) 失败", tc.input)
+			continue
+		}
+		items := res.Groups[0].Items
+		if len(items) != len(tc.items) {
+			t.Errorf("%q: 得到 %d 个迭代, want %d", tc.input, len(items), len(tc.items))
+			continue
+		}
+		sub := p.Group(0).Sub
+		for i, want := range tc.items {
+			for s, w := range map[int]string{0: want[0], 1: want[1]} {
+				sp := items[i].Abs(items[i].Spans[s])
+				if got := tc.input[sp.Start:sp.End]; got != w {
+					t.Errorf("%q 迭代 %d 字段 %s = %q, want %q",
+						tc.input, i, sub.Names()[s], got, w)
+				}
+			}
+		}
+	}
+}
+
+// 回溯路径下重复块也要满足定律 A。
+func TestGroupBacktrackPreservesLawA(t *testing.T) {
+	for _, tc := range []struct{ tmpl, input string }{
+		{"${each|name=xs,sep=;}${k}:${v}${end}", "a:1;b;c"},
+		{"${each|name=xs,sep=;}${k}:${v}${end}", "a:1;b;c:2;d"},
+		{"[${each|name=xs,sep=','}${k}=${v}${end}]", "[a=1,b,c]"},
+	} {
+		p := compile(t, tc.tmpl)
+		src := []byte(tc.input)
+		res := p.NewResult()
+		if !p.Parse(src, res) {
+			t.Errorf("%q: parse(%q) 失败", tc.tmpl, tc.input)
+			continue
+		}
+		data := p.NewData()
+		fillData(p, res, src, data)
+		out, ok := p.Format(nil, data)
+		if !ok {
+			t.Errorf("%q: format 失败", tc.tmpl)
+			continue
+		}
+		if string(out) != tc.input {
+			t.Errorf("定律 A 违反（块回溯）\n template: %q\n input:  %q\n output: %q",
+				tc.tmpl, tc.input, out)
+		}
+	}
+}
+
+// fillData 递归地把解析结果填进渲染输入。
+func fillData(p *plan.Plan, res *plan.Result, src []byte, d *plan.Data) {
+	for i, s := range res.Spans {
+		a := res.Abs(s)
+		d.Values[i] = src[a.Start:a.End]
+	}
+	for g := 0; g < p.NumGroups(); g++ {
+		sub := p.Group(g).Sub
+		d.Groups[g].Items = d.Groups[g].Items[:0]
+		for i := range res.Groups[g].Items {
+			d.Groups[g].Items = append(d.Groups[g].Items, *sub.NewData())
+			fillData(sub, &res.Groups[g].Items[i], src,
+				&d.Groups[g].Items[len(d.Groups[g].Items)-1])
+		}
+	}
+}

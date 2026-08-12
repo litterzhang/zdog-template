@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -185,6 +186,79 @@ func TestPipelineConcurrent(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		if !<-done {
 			t.Fatal("concurrent transform produced wrong output")
+		}
+	}
+}
+
+// shape 与 mapping 都支持路径限定键（`xs[].n`），用来区分跨层级的同名字段。
+// 没有它时 `{"n": …}` 会同时命中外层与块内，且无法表达"只作用于外层"。
+func TestPathScopedShape(t *testing.T) {
+	const tmpl = "${n}|${each|name=xs,sep=;}${n}${end}"
+	num := func(f string) json.RawMessage {
+		return json.RawMessage(`{"type":"number","format":"` + f + `"}`)
+	}
+	for _, tc := range []struct {
+		name  string
+		shape map[string]json.RawMessage
+		want  string
+	}{
+		{"裸名作用于所有层级（向后兼容）",
+			map[string]json.RawMessage{"n": num("%.2f")}, "7.00|1.00;2.00\n"},
+		{"路径限定 null 显式关掉块内",
+			map[string]json.RawMessage{"n": num("%.2f"), "xs[].n": json.RawMessage("null")},
+			"7.00|1;2\n"},
+		{"两层各用各的格式",
+			map[string]json.RawMessage{"n": num("%.2f"), "xs[].n": num("[%.0f]")},
+			"7.00|[1];[2]\n"},
+		{"只作用于块内",
+			map[string]json.RawMessage{"xs[].n": num("<%.1f>")}, "7|<1.0>;<2.0>\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := pipeline.Compile(&pipeline.Config{
+				Version: 1, Source: tmpl, Target: tmpl, Shape: tc.shape,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, _, _ := p.Transform(nil, []byte("7|1;2"), p.NewScratch())
+			if string(out) != tc.want {
+				t.Errorf("out = %q, want %q", out, tc.want)
+			}
+		})
+	}
+}
+
+func TestPathScopedMapping(t *testing.T) {
+	p, err := pipeline.Compile(&pipeline.Config{
+		Version: 1,
+		Source:  "${v}|${each|name=xs,sep=;}${v}${end}",
+		Target:  "${v}|${each|name=xs,sep=;}${v}${end}",
+		// 外层 v 大写，块内 v 保持原样 —— 没有路径限定就没法分开
+		Mapping: map[string]string{"v": "upper(v)", "xs[].v": "v"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ := p.Transform(nil, []byte("a|b;c"), p.NewScratch())
+	if string(out) != "A|b;c\n" {
+		t.Errorf("out = %q, want %q", out, "A|b;c\n")
+	}
+}
+
+// 组不支持表达式，错误信息必须说清楚，而不是让人以为名字打错了。
+func TestBlockExpressionErrorIsActionable(t *testing.T) {
+	_, err := pipeline.Compile(&pipeline.Config{
+		Version: 1,
+		Source:  "${each|name=items,sep=;}${id}${end}",
+		Target:  "${each|name=rows,sep=;}${id}${end}",
+		Mapping: map[string]string{"rows": "reverse(items)"},
+	})
+	if err == nil {
+		t.Fatal("组用表达式应当报错")
+	}
+	for _, want := range []string{"expressions are not supported on blocks", "items"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want substring %q", err, want)
 		}
 	}
 }
